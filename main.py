@@ -68,3 +68,13 @@ if __name__ == '__main__':
     # a = torch.ones(batch, dim)
     # print(a)
     # print((a != 0).unsqueeze((-2)))
+
+    # crit = LabelSmoothing(5, 0, 0.4)
+    # predict = torch.FloatTensor([[0, 0.2, 0.7, 0.1, 0],
+    #                              [0, 0.2, 0.7, 0.1, 0],
+    #                              [0, 0.2, 0.7, 0.1, 0]])
+    # v = crit(Variable(predict.log()),
+    #          Variable(torch.LongTensor([2, 1, 0])))
+    #
+    # print(torch.LongTensor([2, 1, 0]))
+    # print(crit.true_dist)

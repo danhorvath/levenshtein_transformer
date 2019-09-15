@@ -2,7 +2,6 @@ import time
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 
 
 def run_epoch(data_iter, model, loss_compute):
@@ -67,7 +66,10 @@ def get_std_opt(model):
 
 class LabelSmoothing(nn.Module):
     """
-    Implement label smoothing.
+    Implement label smoothing. Basically this switches the original label distribution
+    (which is effectively a dirac delta) to a mixture of the original and a uniform distribution.
+    This helps the network to generalize better (and thus increase accuracy), but in turn will increase the perplexity.
+    q'(k) = (1-smoothing)*q(k) + smoothing*uniform(k) = (1-smoothing)*q(k) + smoothing * 1/output_size
     """
 
     def __init__(self, size, padding_idx, smoothing=0.0):
@@ -89,4 +91,4 @@ class LabelSmoothing(nn.Module):
         if mask.dim() > 0 and mask.size(-1) > 0:
             true_dist.index_fill_(0, mask.squeeze(), 0.0)
         self.true_dist = true_dist
-        return self.criterion(x, Variable(true_dist, requires_grad=False))
+        return self.criterion(x, true_dist.clone().detach().requires_grad_(False))

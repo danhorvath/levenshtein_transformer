@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functions import clones, attention
-from torch.autograd import Variable
 
 
 class Generator(nn.Module):
@@ -130,7 +129,11 @@ class DecoderLayer(nn.Module):
 
 class LayerNorm(nn.Module):
     """
-    Construct a layernorm module (See citation for details).
+    Construct a layernorm module (See https://arxiv.org/abs/1607.06450 for details).
+
+    Setting the activations' mean to 0 and standard deviation to 1,
+    as in RNNs the inputs tend to either grow or shrink at every step,
+    making the gradient vanish or explode.
     """
 
     def __init__(self, features, eps=1e-6):
@@ -225,14 +228,14 @@ class PositionalEncoding(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
         # Compute the positional encodings once in log space.
-        pe = torch.zeros(max_len, d_model)
+        positional_encoding = torch.zeros(max_len, d_model)
         position = torch.arange(0., max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0., d_model, 2) * -(math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
+        positional_encoding[:, 0::2] = torch.sin(position * div_term)
+        positional_encoding[:, 1::2] = torch.cos(position * div_term)
+        positional_encoding = positional_encoding.unsqueeze(0)
+        self.register_buffer('positional_encoding', positional_encoding)
 
     def forward(self, x):
-        x = x + torch.Tensor(self.pe[:, :x.size(1)]).requires_grad_(False)
+        x = x + torch.tensor(self.positional_encoding[:, :x.size(1)], requires_grad=False)
         return self.dropout(x)
