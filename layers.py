@@ -198,7 +198,7 @@ class MultiHeadedAttention(nn.Module):
 
 
 class PositionwiseFeedForward(nn.Module):
-    "Implements FFN equation."
+    """Implements FFN equation."""
 
     def __init__(self, d_model, d_ff, dropout=0.1):
         super(PositionwiseFeedForward, self).__init__()
@@ -221,7 +221,7 @@ class Embeddings(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
-    "Implement the PE function."
+    """Implement the PE function."""
 
     def __init__(self, d_model, dropout, max_len=5000):
         super(PositionalEncoding, self).__init__()
