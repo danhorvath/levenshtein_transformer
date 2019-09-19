@@ -3,6 +3,7 @@ import numpy as np
 from functions import subsequent_mask
 from torch.autograd import Variable
 from torchtext import data
+import random
 
 max_src_in_batch = 25000
 max_tgt_in_batch = 25000
@@ -44,7 +45,8 @@ class Batch(object):
         Create a mask to hide padding and future words.
         """
         tgt_mask = (tgt != pad).unsqueeze(-2)
-        tgt_mask = tgt_mask & Variable(subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data))
+        tgt_mask = tgt_mask & Variable(
+            subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data))
         return tgt_mask
 
 
@@ -80,14 +82,26 @@ class SimpleLossCompute:
 class MyIterator(data.Iterator):
     def create_batches(self):
         if self.train:
-            def pool(d, random_shuffler):
-                for p in data.batch(d, self.batch_size * 100):
-                    p_batch = data.batch(sorted(p, key=self.sort_key),
-                                         self.batch_size, self.batch_size_fn)
+            def pool(d, batch_size, key, batch_size_fn=lambda new, count, sofar: count,
+                     random_shuffler=None, shuffle=False, sort_within_batch=False):
+                """Sort within buckets, then batch, then shuffle batches.
+                Partitions data into chunks of size 100*batch_size, sorts examples within
+                each chunk using sort_key, then batch these examples and shuffle the
+                batches.
+                This pool function was changed to deal with larger batches -> the batch_size_fn input was removed
+                for p in data.batch(d, batch_size * 100, batch_size_fn):
+                """
+                for p in data.batch(d, batch_size * 100):
+                    p_batch = data.batch(
+                        sorted(p, key=key), batch_size, batch_size_fn)
                     for b in random_shuffler(list(p_batch)):
                         yield b
 
-            self.batches = pool(self.data(), self.random_shuffler)
+            self.batches = pool(self.data(), self.batch_size,
+                                self.sort_key, self.batch_size_fn,
+                                random_shuffler=self.random_shuffler,
+                                shuffle=self.shuffle,
+                                sort_within_batch=self.sort_within_batch)
         else:
             self.batches = []
             for b in data.batch(self.data(), self.batch_size, self.batch_size_fn):

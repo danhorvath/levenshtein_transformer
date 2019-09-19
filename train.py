@@ -2,9 +2,10 @@ import time
 
 import torch
 import torch.nn as nn
+import wandb
 
 
-def run_epoch(data_iter, model, loss_compute):
+def run_epoch(data_iter, model, loss_compute, epoch):
     """
     Standard Training and Logging Function
     """
@@ -13,14 +14,18 @@ def run_epoch(data_iter, model, loss_compute):
     total_loss = 0
     tokens = 0
     for i, batch in enumerate(data_iter):
-        out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
+        out = model.forward(batch.src, batch.trg,
+                            batch.src_mask, batch.trg_mask)
         loss = loss_compute(out, batch.trg_y, batch.ntokens)
         total_loss += loss
         total_tokens += batch.ntokens
         tokens += batch.ntokens
         if i % 50 == 1:
             elapsed = time.time() - start
-            print('Epoch step: %d Loss %f Tokens per Sec: %f' % (i, loss / batch.ntokens, tokens / elapsed))
+            print('Epoch: %d step: %d Loss %f Tokens per Sec: %f' %
+                  (epoch, i, loss / batch.ntokens, tokens / elapsed))
+            wandb.log({'Epoch': epoch, 'Epoch step': i, 'Loss': loss / batch.ntokens,
+                       'Tokens per Sec': tokens / elapsed})
             start = time.time()
             tokens = 0
     return total_loss / total_tokens

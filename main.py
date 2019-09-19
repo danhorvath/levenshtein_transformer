@@ -19,16 +19,18 @@ if __name__ == '__main__':
     model_opt = NoamOpt(model.src_embed[0].d_model, 1, 400,
                         torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
 
-    for epoch in range(10):
-        model.train()
-        run_epoch(data_gen(V, 30, 20), model, SimpleLossCompute(model.generator, criterion, model_opt))
-        model.eval()
-        print(run_epoch(data_gen(V, 30, 5), model, SimpleLossCompute(model.generator, criterion, None)))
+    # for epoch in range(10):
+    #     model.train()
+    #     run_epoch(data_gen(V, 30, 20), model, SimpleLossCompute(model.generator, criterion, model_opt))
+    #     model.eval()
+    #     print(run_epoch(data_gen(V, 30, 5), model, SimpleLossCompute(model.generator, criterion, None)))
 
     model.eval()
     src = torch.LongTensor([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
     src_mask = torch.ones(1, 1, 10)
     print(greedy_decode(model, src, src_mask, max_len=10, start_symbol=1))
+
+    torch.save(model.state_dict(), 'params__')
 
     # batch = 2
     # dim = 6
