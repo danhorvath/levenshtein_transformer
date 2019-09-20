@@ -2,6 +2,8 @@ from datetime import datetime
 import spacy
 import torch
 import torch.nn as nn
+import nltk
+import numpy as np
 from torchtext import data, datasets
 
 
@@ -87,36 +89,76 @@ model_opt = NoamOpt(MODEL_SIZE, FACTOR, WARMUP,
 
 wandb.watch(model)
 
-for epoch in range(10):
-    model_par.train()
-    run_epoch((rebatch(pad_idx, b) for b in train_iter), model_par,
-              MultiGPULossCompute(model.generator, criterion, devices=devices, opt=model_opt), epoch)
+# for epoch in range(10):
+#     model_par.train()
+#     run_epoch((rebatch(pad_idx, b) for b in train_iter), model_par,
+#               MultiGPULossCompute(model.generator, criterion, devices=devices, opt=model_opt), epoch)
 
-    model_par.eval()
-    loss = run_epoch((rebatch(pad_idx, b) for b in valid_iter), model_par,
-                     MultiGPULossCompute(model.generator, criterion, devices=devices, opt=None), epoch)
-    print(loss)
+#     model_par.eval()
+#     loss = run_epoch((rebatch(pad_idx, b) for b in valid_iter), model_par,
+#                      MultiGPULossCompute(model.generator, criterion, devices=devices, opt=None), epoch)
+#     print(loss)
 
-current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")
-torch.save(model.state_dict(), 'de-en__'+current_date+'.pt')
+# current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")
+# torch.save(model.state_dict(), 'de-en__'+current_date+'.pt')
 
+
+def vector_to_sentence(vector):
+    sentence = []
+    for l in range(1, len(vector)):
+        word = TGT.vocab.itos[vector[l]]
+        if word == EOS_WORD:
+            break
+        sentence.append(word)
+
+    return sentence
+
+
+def get_weights(sentence):
+    length = len(sentence) if len(sentence) <= 4 else 4
+    return list(np.ones(length)/length)
+
+
+num = []
 for i, batch in enumerate(valid_iter):
     src = batch.src.transpose(0, 1)[:1]
     src_mask = (src != SRC.vocab.stoi[BLANK_WORD]).unsqueeze(-2)
     out = greedy_decode(model, src, src_mask, max_len=60,
                         start_symbol=TGT.vocab.stoi[BOS_WORD])
-    print('Translation:', end='\t')
-    for i in range(1, out.size(1)):
-        sym = TGT.vocab.itos[out[0, i]]
-        if sym == EOS_WORD:
-            break
-        print(sym, end=' ')
-    print()
-    print('Target:', end='\t')
-    for i in range(batch.trg.size(0)):
-        sym = TGT.vocab.itos[batch.trg.data[i, 0]]
-        if sym == EOS_WORD:
-            break
-        print(sym, end=' ')
-    print()
-    break
+
+    targets = [vector_to_sentence(batch.trg.data[:, i])
+               for i in range(batch.trg.size(1))]
+
+    sentence_pairs = zip(targets, targets)
+    scores = np.array([nltk.translate.bleu_score.sentence_bleu(
+        [sentence_pair[0]], sentence_pair[1], get_weights(sentence_pair[0])) for sentence_pair in sentence_pairs])
+    num.append(len(scores))
+    # print('BLEU score: ', scores.mean())
+
+print('Val length', len(val))
+print('Number of Bleu scores', np.array(num).sum())
+# for i in range(1, out.size(1)):
+#     sym = TGT.vocab.itos[out[0, i]]
+#     if sym == EOS_WORD:
+#         break
+#     print(sym, end=' ')
+# print(predictions)
+# print('Target:', end='\t')
+# for i in range(batch.trg.size(0)):
+#     sym = TGT.vocab.itos[batch.trg.data[i, 0]]
+#     if sym == EOS_WORD:
+#         break
+#     print(sym, end=' ')
+# print()if i % 100 == 0
+# sen = ['Barack', 'Obama', 'erhält', 'als', 'vier@@', 'ter', 'US-@@', 'Präsident', 'den', 'Friedens@@', 'no@@', 'bel@@', 'preis']
+
+
+# def conc(sentence):
+#     new_sentence = []
+#     for i in range(len(sentence)):
+#         word = sentence[i]
+#         if word[-2:] == '@@' and i != len(sentence)-1:
+#             sentence[i+1] = word[:-2]+sentence[i+1]
+#         else:
+#             new_sentence.append(word)
+#     return new_sentence

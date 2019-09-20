@@ -10,3 +10,5 @@ wandb/
 *.out
 
 *.err
+
+data/wmt14/wmt14/

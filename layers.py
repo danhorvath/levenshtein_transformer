@@ -12,14 +12,14 @@ class Generator(nn.Module):
 
     def __init__(self, d_model, vocab):
         super(Generator, self).__init__()
-        self.proj = nn.Linear(d_model, vocab)
+        self.lookup_table = nn.Linear(d_model, vocab)
 
     def forward(self, x):
         """
         log_softmax can improve numerical performance and gradient optimization compared to softmax.
         https://datascience.stackexchange.com/questions/40714/what-is-the-advantage-of-using-log-softmax-instead-of-softmax
         """
-        return F.log_softmax(self.proj(x), dim=-1)
+        return F.log_softmax(self.lookup_table(x), dim=-1)
 
 
 class EncoderDecoder(nn.Module):
@@ -237,5 +237,5 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('positional_encoding', positional_encoding)
 
     def forward(self, x):
-        x = x + torch.tensor(self.positional_encoding[:, :x.size(1)], requires_grad=False)
+        x = x + self.positional_encoding[:, :x.size(1)].clone().detach().requires_grad_(True)
         return self.dropout(x)
