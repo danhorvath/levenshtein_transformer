@@ -5,7 +5,7 @@ import torch.nn as nn
 import wandb
 
 
-def run_epoch(data_iter, model, loss_compute, epoch):
+def run_epoch(data_iter, model, loss_compute, current_steps):
     """
     Standard Training and Logging Function
     """
@@ -22,13 +22,12 @@ def run_epoch(data_iter, model, loss_compute, epoch):
         tokens += batch.ntokens
         if i % 50 == 1:
             elapsed = time.time() - start
-            print('Epoch: %d step: %d Loss %f Tokens per Sec: %f' %
-                  (epoch, i, loss / batch.ntokens, tokens / elapsed))
-            wandb.log({'Epoch': epoch, 'Epoch step': i, 'Loss': loss / batch.ntokens,
+            print(f"Step: {current_steps + i} | Loss: {loss / batch.ntokens} | Tokens per Sec: {tokens / elapsed}")
+            wandb.log({'Step': current_steps + i, 'Loss': loss / batch.ntokens,
                        'Tokens per Sec': tokens / elapsed})
             start = time.time()
             tokens = 0
-    return (total_loss / total_tokens, i)
+    return (total_loss / total_tokens, current_steps + i)
 
 
 class NoamOpt(object):

@@ -12,3 +12,5 @@ wandb/
 *.err
 
 data/wmt14/wmt14/
+
+.vscode/
