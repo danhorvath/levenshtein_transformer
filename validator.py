@@ -32,7 +32,12 @@ def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, loggin
         return (src != SRC.vocab.stoi[BLANK_WORD]).unsqueeze(-2)
 
     def get_BLEU():
-        bleu_scores = []
+
+
+        # TODO: paralell Bleu calculation
+
+        
+        batch_bleus = []
         for i, batch in enumerate(valid_iter):
             src = batch.src.transpose(0, 1)
             tgt = batch.trg.transpose(0, 1)
@@ -45,18 +50,16 @@ def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, loggin
 
             out_sentences = [vector_to_sentence(out_seq.squeeze(), TGT) for out_seq in out_seqs]
 
-            sentence_pairs = zip(tgt_sentences, out_sentences)
+            sentence_pairs = list(zip(tgt_sentences, out_sentences))
             if logging:
                 sentence_pair = list(sentence_pairs)[0]
 
-                print(f"Source: {(' '.join(src_sentences[0])).encode('utf-8').decode('latin-1')}\n Target: {(' '.join(sentence_pair[0])).encode('utf-8').decode('latin-1')}\n Prediction: {(' '.join(sentence_pair[1])).encode('utf-8').decode('latin-1')}\n")
+                print(f"Source: {(' '.join(src_sentences[0])).encode('utf-8').decode('latin-1')}\nTarget: {(' '.join(sentence_pair[0])).encode('utf-8').decode('latin-1')}\nPrediction: {(' '.join(sentence_pair[1])).encode('utf-8').decode('latin-1')}\n")
 
-            batch_bleu = np.array([nltk.translate.bleu_score.sentence_bleu(
-                [sentence_pair[0]], sentence_pair[1], get_weights(sentence_pair[0])) for sentence_pair in sentence_pairs])
-            bleu_scores.append(batch_bleu.mean())
+            batch_bleu = np.array([nltk.translate.bleu_score.sentence_bleu([sentence_pair[0]], sentence_pair[1], get_weights(sentence_pair[0])) for sentence_pair in sentence_pairs])
+            batch_bleus.append(batch_bleu.mean())
 
-        bleu_score = np.array(bleu_scores).mean()
-        wandb.log({'BLEU': bleu_score})
+        bleu_score = np.array(batch_bleus).mean()
         return bleu_score
 
     return get_BLEU()

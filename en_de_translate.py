@@ -18,13 +18,13 @@ BOS_WORD = '<s>'
 EOS_WORD = '</s>'
 BLANK_WORD = '<blank>'
 
-config = {'max_epochs': 10,
+config = {'max_epochs': 20,
           'num_layers': 6,
           'batch_size': 25000,
           'max_len': 100,
           'min_freq': 1,
-          'factor': 2,
-          'warmup': 4000,
+          'factor': 1,
+          'warmup': 2000,
           'lr': 0,
           'epsilon': 1e-9,
           'max_steps': 1e5,
@@ -56,8 +56,8 @@ def main():
     print('Train set length: ', len(train))
 
     # building shared vocabulary
-    SRC.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
-    TGT.vocab = SRC.vocab
+    TGT.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
+    SRC.vocab = TGT.vocab
 
     print('Source vocab length: ', len(SRC.vocab.itos))
     print('Target vocab length: ', len(TGT.vocab.itos))
@@ -100,25 +100,35 @@ def main():
     wandb.watch(model)
 
     current_steps = 0
-    for epoch in range(config['max_epochs']):
+    for epoch in range(1, config['max_epochs']+1):
+        # training model
         model_par.train()
-        run_epoch((rebatch(pad_idx, b) for b in train_iter), model_par,
-                  MultiGPULossCompute(
-                      model.generator, criterion, devices=devices, opt=model_opt),
-                  current_steps)
+        loss_calculator = MultiGPULossCompute(
+            model.generator, criterion, devices=devices, opt=model_opt)
 
+        (_,  steps) = run_epoch((rebatch(pad_idx, b) for b in train_iter),
+                                model_par,
+                                loss_calculator,
+                                steps_so_far=current_steps,
+                                logging=True)
+
+        current_steps += steps
+
+        # calculating validation loss and bleu score
         model_par.eval()
-        (loss, current_steps) = run_epoch((rebatch(pad_idx, b) for b in valid_iter), model_par,
-                                          MultiGPULossCompute(
-            model.generator, criterion, devices=devices, opt=None),
-            current_steps)
-        print(loss)
-        if current_steps > config['max_steps']:
-            break
+        loss_calculator_without_optimizer = MultiGPULossCompute(
+            model.generator, criterion, devices=devices, opt=None)
+
+        (loss, _) = run_epoch((rebatch(pad_idx, b) for b in valid_iter), model_par,
+                              loss_calculator_without_optimizer,
+                              current_steps)
+
         bleu = validate(model, valid_iter, SRC, TGT,
                         BOS_WORD, EOS_WORD, BLANK_WORD)
         print(f"Epoch {epoch} | Bleu score: {bleu} | Loss: {loss}")
         wandb.log({'Epoch': epoch, 'Epoch loss': loss, 'Epoch bleu': bleu})
+        if current_steps > config['max_steps']:
+            break
 
     current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")
     torch.save(model.state_dict(), 'en-de__'+current_date+'.pt')
