@@ -20,11 +20,11 @@ BLANK_WORD = '<blank>'
 
 config = {'max_epochs': 20,
           'num_layers': 6,
-          'batch_size': 25000,
-          'max_len': 100,
+          'batch_size': 26000,
+          'max_len': 150,
           'min_freq': 1,
           'factor': 1,
-          'warmup': 2000,
+          'warmup': 4000,
           'lr': 0,
           'epsilon': 1e-9,
           'max_steps': 1e5,
@@ -48,26 +48,28 @@ def main():
                      eos_token=EOS_WORD, pad_token=BLANK_WORD)
 
     train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
-                                             train='train.tok.clean.bpe.32000',
-                                             validation='newstest2013.tok.bpe.32000',
-                                             test='newstest2014.tok.bpe.32000',
-                                             fields=(SRC, TGT),
-                                             root='./.data/')
+                                                train='train.tok.clean.bpe.32000',
+                                                validation='newstest2013.tok.bpe.32000',
+                                                test='newstest2014.tok.bpe.32000',
+                                                fields=(SRC, TGT),
+                                                filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
+                                                                    len(vars(x)['trg']) <= config['max_len'],
+                                                root = './.data/')
     print('Train set length: ', len(train))
 
     # building shared vocabulary
-    TGT.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
-    SRC.vocab = TGT.vocab
+    TGT.build_vocab(train.src, train.trg, min_freq = config['min_freq'])
+    SRC.vocab=TGT.vocab
 
     print('Source vocab length: ', len(SRC.vocab.itos))
     print('Target vocab length: ', len(TGT.vocab.itos))
     wandb.config.update({'src_vocab_length': len(SRC.vocab),
                          'target_vocab_length': len(TGT.vocab)})
 
-    pad_idx = TGT.vocab.stoi[BLANK_WORD]
+    pad_idx=TGT.vocab.stoi[BLANK_WORD]
     print('Pad index:', pad_idx)
 
-    train_iter = MyIterator(train, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
+    train_iter=MyIterator(train, batch_size = config['batch_size'], device = torch.device(0), repeat = False,
                             sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
 
     valid_iter = MyIterator(val, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
@@ -123,18 +125,28 @@ def main():
                               loss_calculator_without_optimizer,
                               current_steps)
 
-        bleu = validate(model, valid_iter, SRC, TGT,
-                        BOS_WORD, EOS_WORD, BLANK_WORD)
-        print(f"Epoch {epoch} | Bleu score: {bleu} | Loss: {loss}")
-        wandb.log({'Epoch': epoch, 'Epoch loss': loss, 'Epoch bleu': bleu})
+        if (epoch > 5 and epoch%2==1) or current_steps > config['max_steps']:
+            # greedy decoding takes a while so Bleu won't be evaluated for every epoch
+            bleu = validate(model, valid_iter, SRC, TGT,
+                            BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'])
+            wandb.log({'Epoch bleu': bleu})
+            print(f'Epoch {epoch} | Bleu score: {bleu} ')
+            
+        print(f"Epoch {epoch} | Loss: {loss}")
+        wandb.log({'Epoch': epoch, 'Epoch loss': loss})
+        if epoch % 5 == 0 and epoch != 0:
+            current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")
+            torch.save(model.state_dict(), 'en-de__'+current_date+'.pt')
         if current_steps > config['max_steps']:
             break
 
     current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")
-    torch.save(model.state_dict(), 'en-de__'+current_date+'.pt')
+    file_name = 'en-de__'+current_date+'.pt'
+    torch.save(model.state_dict(), file_name)
+    print(f'Model saved as {file_name}')
 
     test_bleu = validate(model, test_iter, SRC, TGT,
-                         BOS_WORD, EOS_WORD, BLANK_WORD, logging=True)
+                         BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'], logging=True)
     print(f"Test Bleu score: {test_bleu}")
     wandb.config.update({'Test bleu score': test_bleu})
 

@@ -1,10 +1,10 @@
-import nltk
+from nltk.translate.bleu_score import sentence_bleu
 import numpy as np
 from functions import greedy_decode
 import wandb
 
 
-def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, logging=False):
+def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, max_len, logging=False):
     def bpe_to_words(sentence):
         new_sentence = []
         for i in range(len(sentence)):
@@ -19,9 +19,10 @@ def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, loggin
         sentence = []
         for l in range(start_from, len(vector)):
             word = field.vocab.itos[vector[l]]
-            if word == EOS_WORD: break
+            if word == EOS_WORD:
+                break
             sentence.append(word)
-            
+        # return bpe_to_words(sentence)' '.join(tgt_sentences[0])
         return bpe_to_words(sentence)
 
     def get_weights(sentence):
@@ -33,30 +34,33 @@ def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, loggin
 
     def get_BLEU():
 
-
         # TODO: paralell Bleu calculation
 
-        
         batch_bleus = []
         for i, batch in enumerate(valid_iter):
             src = batch.src.transpose(0, 1)
             tgt = batch.trg.transpose(0, 1)
 
-            src_sentences = [vector_to_sentence(src[i, :], SRC, 0) for i in range(src.size(0))]
+            src_sentences = [vector_to_sentence(
+                src[i, :], SRC, 0) for i in range(src.size(0))]
 
-            tgt_sentences = [vector_to_sentence(tgt[i, :], TGT) for i in range(tgt.size(0))]
+            tgt_sentences = [vector_to_sentence(
+                tgt[i, :], TGT) for i in range(tgt.size(0))]
 
-            out_seqs = [greedy_decode(model, src_sentence.unsqueeze(-2), get_src_mask(src_sentence.unsqueeze(-2)), max_len=60, start_symbol=TGT.vocab.stoi[BOS_WORD]) for src_sentence in src]
+            out_seqs = [greedy_decode(model, src_sentence.unsqueeze(-2), get_src_mask(src_sentence.unsqueeze(-2)), max_len=max_len,
+                                      start_symbol=TGT.vocab.stoi[BOS_WORD], stop_symbol=TGT.vocab.stoi[EOS_WORD]) for src_sentence in src]
 
-            out_sentences = [vector_to_sentence(out_seq.squeeze(), TGT) for out_seq in out_seqs]
+            out_sentences = [vector_to_sentence(
+                out_seq.squeeze(), TGT) for out_seq in out_seqs]
 
             sentence_pairs = list(zip(tgt_sentences, out_sentences))
             if logging:
                 sentence_pair = list(sentence_pairs)[0]
 
-                print(f"Source: {(' '.join(src_sentences[0])).encode('utf-8').decode('latin-1')}\nTarget: {(' '.join(sentence_pair[0])).encode('utf-8').decode('latin-1')}\nPrediction: {(' '.join(sentence_pair[1])).encode('utf-8').decode('latin-1')}\n")
+                print(f"Source: {' '.join(src_sentences[0]).encode('utf-8').decode('latin-1')}\nTarget: {' '.join(sentence_pair[0]).encode('utf-8').decode('latin-1')}\nPrediction: {' '.join(sentence_pair[1]).encode('utf-8').decode('latin-1')}\n")
 
-            batch_bleu = np.array([nltk.translate.bleu_score.sentence_bleu([sentence_pair[0]], sentence_pair[1], get_weights(sentence_pair[0])) for sentence_pair in sentence_pairs])
+            batch_bleu = np.array([sentence_bleu([sentence_pair[0]], sentence_pair[1], weights=(
+                0.25, 0.25, 0.25, 0.25)) for sentence_pair in sentence_pairs])
             batch_bleus.append(batch_bleu.mean())
 
         bleu_score = np.array(batch_bleus).mean()
