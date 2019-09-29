@@ -17,7 +17,7 @@ class MultiGPULossCompute(object):
         self.devices = devices
         self.chunk_size = chunk_size
 
-    def __call__(self, out, target, normalize):
+    def __call__(self, out, target, normalize, optimizer_step=True):
         total = 0.0
         generator = nn.parallel.replicate(self.generator, devices=self.devices)
         out_scatter = nn.parallel.scatter(out, target_gpus=self.devices)
@@ -59,7 +59,8 @@ class MultiGPULossCompute(object):
             o1 = out
             o2 = nn.parallel.gather(out_grad, target_device=self.devices[0])
             o1.backward(gradient=o2)
-            self.opt.step()
-            self.opt.optimizer.zero_grad()
+            if optimizer_step:
+                self.opt.step()
+                self.opt.optimizer.zero_grad()
 
         return total * normalize

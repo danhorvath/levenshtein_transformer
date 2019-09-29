@@ -34,6 +34,6 @@ class NoamOpt(object):
             step = self._step
 
         if step < self.warmup_updates:
-            return self.warmup_init_lr + self.step*self.warmup_lr_step
+            return self.warmup_init_lr + step*self.warmup_lr_step
         else:
-            return self.decay_factor * self.step**-0.5
+            return self.decay_factor * step**-0.5

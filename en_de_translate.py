@@ -5,11 +5,14 @@ from torchtext import data, datasets
 
 
 from functions import greedy_decode
-from train import LabelSmoothing, NoamOpt, run_epoch
+from train import LabelSmoothing, run_epoch
+from optimizer import NoamOpt
 from multi_gpu_loss_compute import MultiGPULossCompute
 from models import Transformer
 from data import batch_size_fn, MyIterator, rebatch
 from validator import validate
+
+from en_de_config import config
 
 import wandb
 
@@ -18,23 +21,11 @@ BOS_WORD = '<s>'
 EOS_WORD = '</s>'
 BLANK_WORD = '<blank>'
 
-config = {'max_epochs': 20,
-          'num_layers': 6,
-          'batch_size': 26000,
-          'max_len': 150,
-          'min_freq': 1,
-          'factor': 1,
-          'warmup': 4000,
-          'lr': 0,
-          'epsilon': 1e-9,
-          'max_steps': 1e5,
-          'beta_1': 0.9,
-          'beta_2': 0.98
-          }
+
 
 wandb.init(project="transformer")
 wandb.config.update(config)
-
+ 
 
 def main():
     devices = list(range(torch.cuda.device_count()))
@@ -49,6 +40,7 @@ def main():
 
     train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
                                                 train='train.tok.clean.bpe.32000',
+                                                # train='newstest2014.tok.bpe.32000',
                                                 validation='newstest2013.tok.bpe.32000',
                                                 test='newstest2014.tok.bpe.32000',
                                                 fields=(SRC, TGT),
@@ -91,13 +83,17 @@ def main():
     wandb.config.update({'model_size': model_size})
 
     criterion = LabelSmoothing(
-        size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1)
+        size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
+
+    eval_criterion = LabelSmoothing(
+        size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=1)
+    eval_criterion.cuda()
 
     model_par = nn.DataParallel(model, device_ids=devices)
 
-    model_opt = NoamOpt(model_size, config['factor'], config['warmup'],
-                        torch.optim.Adam(model.parameters(), lr=config['lr'], betas=(config['beta_1'], config['beta_2']), eps=config['epsilon']))
+    model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'], warmup_updates=config['warmup'],
+                        optimizer=torch.optim.Adam(model.parameters(), lr=0, betas=(config['beta_1'], config['beta_2']), eps=config['epsilon']))
 
     wandb.watch(model)
 
@@ -109,35 +105,38 @@ def main():
             model.generator, criterion, devices=devices, opt=model_opt)
 
         (_,  steps) = run_epoch((rebatch(pad_idx, b) for b in train_iter),
-                                model_par,
-                                loss_calculator,
-                                steps_so_far=current_steps,
-                                logging=True)
+                            model_par,
+                            loss_calculator,
+                            steps_so_far=current_steps,
+                            batch_multiplier=config['batch_multiplier'],
+                            logging=True)
 
         current_steps += steps
 
         # calculating validation loss and bleu score
         model_par.eval()
         loss_calculator_without_optimizer = MultiGPULossCompute(
-            model.generator, criterion, devices=devices, opt=None)
+            model.generator, eval_criterion, devices=devices, opt=None)
 
-        (loss, _) = run_epoch((rebatch(pad_idx, b) for b in valid_iter), model_par,
-                              loss_calculator_without_optimizer,
-                              current_steps)
+        (loss, _) = run_epoch((rebatch(pad_idx, b) for b in valid_iter),
+                            model_par,
+                            loss_calculator_without_optimizer,
+                            steps_so_far=current_steps)
 
-        if (epoch > 5 and epoch%2==1) or current_steps > config['max_steps']:
+        if (epoch > 5 and epoch % 2 == 1) or current_steps > config['max_step']:
             # greedy decoding takes a while so Bleu won't be evaluated for every epoch
+            print('Calculating BLEU score...')
             bleu = validate(model, valid_iter, SRC, TGT,
                             BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'])
             wandb.log({'Epoch bleu': bleu})
             print(f'Epoch {epoch} | Bleu score: {bleu} ')
-            
+
         print(f"Epoch {epoch} | Loss: {loss}")
         wandb.log({'Epoch': epoch, 'Epoch loss': loss})
         if epoch % 5 == 0 and epoch != 0:
             current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")
             torch.save(model.state_dict(), 'en-de__'+current_date+'.pt')
-        if current_steps > config['max_steps']:
+        if current_steps > config['max_step']:
             break
 
     current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")

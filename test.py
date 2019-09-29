@@ -55,8 +55,8 @@ print('Target vocab length: ', len(TGT.vocab.itos))
 
 pad_idx = TGT.vocab.stoi[BLANK_WORD]
 
-test_iter = MyIterator(test, batch_size=BATCH_SIZE, device=torch.device(
-    0), repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
+test_iter = MyIterator(test, batch_size=BATCH_SIZE, device=torch.device(0), 
+    repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
 
 print('Loading model...')
@@ -70,11 +70,11 @@ test_bleu = validate(model, test_iter, SRC, TGT,
 print('Test Bleu score: %f' % (test_bleu))
 
 
-tokens = list()
-with open('.data/wmt14/vocab.bpe.32000') as f:
-    for line in f:
-        tokens.append(line.rstrip('\n'))
+# tokens = list()
+# with open('.data/wmt14/vocab.bpe.32000') as f:
+#     for line in f:
+#         tokens.append(line.rstrip('\n'))
 
-tokens.append(BOS_WORD)
-tokens.append(EOS_WORD)
-tokens.append(BLANK_WORD)
+# tokens.append(BOS_WORD)
+# tokens.append(EOS_WORD)
+# tokens.append(BLANK_WORD)

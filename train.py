@@ -5,7 +5,7 @@ import torch.nn as nn
 import wandb
 
 
-def run_epoch(data_iter, model, loss_compute, steps_so_far, logging=False):
+def run_epoch(data_iter, model, loss_compute, steps_so_far, batch_multiplier=1, logging=False):
     """
     Standard Training and Logging Function
     """
@@ -13,23 +13,33 @@ def run_epoch(data_iter, model, loss_compute, steps_so_far, logging=False):
     total_tokens = 0
     total_loss = 0
     tokens = 0
+
     for i, batch in enumerate(data_iter):
-        out = model.forward(batch.src, batch.trg,
-                            batch.src_mask, batch.trg_mask)
-        loss = loss_compute(out, batch.trg_y, batch.ntokens)
+        effective_step = i / batch_multiplier
+        
+        # update the model on steps defined by batch_multiplier or the last step in the epoch
+        optimizer_step = effective_step.is_integer()
+
+        out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
+
+        # TODO set number of batches if the number of iterations in the epoch is not dividable by batch_multiplier
+        loss = loss_compute(out, batch.trg_y, batch.ntokens, optimizer_step=optimizer_step)
+
         total_loss += loss
         total_tokens += batch.ntokens
         tokens += batch.ntokens
-        elapsed = time.time() - start
-        if logging:
-            wandb.log({'Step': steps_so_far + i, 'Loss': loss / batch.ntokens,
-                       'Tokens per Sec': tokens / elapsed, 'Learning rate': loss_compute.opt._rate})
-            if i % 100 == 1:
-                print(f"Step: {steps_so_far + i} | Loss: {loss / batch.ntokens} | Tokens per Sec: {tokens / elapsed} | Learning rate: {loss_compute.opt._rate}")
 
-        start = time.time()
-        tokens = 0
-    return (total_loss / total_tokens, i)
+        
+        if logging and optimizer_step:
+            elapsed = time.time() - start
+            wandb.log({'Step': steps_so_far + effective_step, 'Loss': loss *  batch_multiplier / batch.ntokens,
+                       'Tokens per Sec': tokens / elapsed, 'Learning rate': loss_compute.opt._rate})
+            if effective_step % 100 == 1:
+                print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} | Tokens per Sec: {tokens / elapsed} | Learning rate: {loss_compute.opt._rate}")
+            start = time.time()
+            tokens = 0
+
+    return (total_loss / total_tokens, effective_step)
 
 
 class NoamOpt(object):
@@ -78,7 +88,7 @@ class LabelSmoothing(nn.Module):
     q'(k) = (1-smoothing)*q(k) + smoothing*uniform(k) = (1-smoothing)*q(k) + smoothing * 1/output_size
     """
 
-    def __init__(self, size, padding_idx, smoothing=0.0):
+    def __init__(self, size, padding_idx, smoothing=0.0, batch_multiplier=1.):
         super(LabelSmoothing, self).__init__()
         self.criterion = nn.KLDivLoss(reduction='sum')
         self.padding_idx = padding_idx
@@ -86,6 +96,7 @@ class LabelSmoothing(nn.Module):
         self.smoothing = smoothing
         self.size = size
         self.true_dist = None
+        self.batch_multiplier = batch_multiplier
 
     def forward(self, x, target):
         assert x.size(1) == self.size
@@ -97,4 +108,4 @@ class LabelSmoothing(nn.Module):
         if mask.dim() > 0 and mask.size(-1) > 0:
             true_dist.index_fill_(0, mask.squeeze(), 0.0)
         self.true_dist = true_dist
-        return self.criterion(x, true_dist.clone().detach().requires_grad_(False))
+        return self.criterion(x, true_dist.clone().detach().requires_grad_(False)) / self.batch_multiplier

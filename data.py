@@ -5,8 +5,10 @@ from torch.autograd import Variable
 from torchtext import data
 import random
 
-max_src_in_batch = 26000
-max_tgt_in_batch = 26000
+from en_de_config import config
+
+max_src_in_batch = config['batch_size']
+max_tgt_in_batch = config['batch_size']
 
 
 def batch_size_fn(new, count, size_so_far):
