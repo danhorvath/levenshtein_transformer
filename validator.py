@@ -1,69 +1,67 @@
-from nltk.translate.bleu_score import sentence_bleu
-import numpy as np
-from functions import greedy_decode
 import wandb
+from nltk.translate.bleu_score import sentence_bleu, corpus_bleu as nltk_corpus_bleu
+from sacrebleu import corpus_bleu
+import numpy as np
+from transformer.search import greedy_decode
+from utils import vector_to_sentence, get_src_mask
 
 
 def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, max_len, logging=False):
-    def bpe_to_words(sentence):
-        new_sentence = []
-        for i in range(len(sentence)):
-            word = sentence[i]
-            if word[-2:] == '@@' and i != len(sentence)-1:
-                sentence[i+1] = word[:-2]+sentence[i+1]
-            else:
-                new_sentence.append(word)
-        return new_sentence
+    print('Validating...')
+    # TODO: paralell Bleu calculation
 
-    def vector_to_sentence(vector, field, start_from=1):
-        sentence = []
-        for l in range(start_from, len(vector)):
-            word = field.vocab.itos[vector[l]]
-            if word == EOS_WORD:
-                break
-            sentence.append(word)
-        # return bpe_to_words(sentence)' '.join(tgt_sentences[0])
-        return bpe_to_words(sentence)
+    batch_bleus = []
+    batch_sacrebleus = []
+    hypotheses_tokenized = []
+    references_tokenized =[]
 
-    def get_weights(sentence):
-        length = len(sentence) if len(sentence) <= 4 else 4
-        return list(np.ones(length)/length)
+    hypotheses = []
+    references =[]
 
-    def get_src_mask(src):
-        return (src != SRC.vocab.stoi[BLANK_WORD]).unsqueeze(-2)
+    for i, batch in enumerate(valid_iter):
+        src = batch.src.transpose(0, 1)
+        tgt = batch.trg.transpose(0, 1)
 
-    def get_BLEU():
+        src_sentences = [vector_to_sentence(
+            src[i, :], SRC, 0) for i in range(src.size(0))]
 
-        # TODO: paralell Bleu calculation
+        tgt_sentences = [vector_to_sentence(tgt[i, :], TGT, EOS_WORD)
+                         for i in range(tgt.size(0))]
 
-        batch_bleus = []
-        for i, batch in enumerate(valid_iter):
-            src = batch.src.transpose(0, 1)
-            tgt = batch.trg.transpose(0, 1)
+        out_seqs = [greedy_decode(model, src_sentence.unsqueeze(-2), get_src_mask(src_sentence.unsqueeze(-2), SRC.vocab.stoi[BLANK_WORD]), max_len=max_len,
+                                  start_symbol=TGT.vocab.stoi[BOS_WORD], stop_symbol=TGT.vocab.stoi[EOS_WORD]) for src_sentence in src]
 
-            src_sentences = [vector_to_sentence(
-                src[i, :], SRC, 0) for i in range(src.size(0))]
+        out_sentences = [vector_to_sentence(out_seq.squeeze(), TGT, EOS_WORD)
+             for out_seq in out_seqs]
 
-            tgt_sentences = [vector_to_sentence(
-                tgt[i, :], TGT) for i in range(tgt.size(0))]
+        hypotheses_tokenized += [out_sentence.split(' ') for out_sentence in out_sentences]
+        references_tokenized += [[tgt_sentence.split(' ')] for tgt_sentence in tgt_sentences]
 
-            out_seqs = [greedy_decode(model, src_sentence.unsqueeze(-2), get_src_mask(src_sentence.unsqueeze(-2)), max_len=max_len,
-                                      start_symbol=TGT.vocab.stoi[BOS_WORD], stop_symbol=TGT.vocab.stoi[EOS_WORD]) for src_sentence in src]
+        hypotheses += out_sentences
+        references += tgt_sentences
 
-            out_sentences = [vector_to_sentence(
-                out_seq.squeeze(), TGT) for out_seq in out_seqs]
+        # sentence_pairs = list(zip(tgt_sentences, out_sentences))
+        if logging:
+            # sentence_pair = list(sentence_pairs)[0]
 
-            sentence_pairs = list(zip(tgt_sentences, out_sentences))
-            if logging:
-                sentence_pair = list(sentence_pairs)[0]
+            print(
+                f"Source: {src_sentences[0]}\nTarget: {tgt_sentences[0]}\nPrediction: {out_sentences[0]}\n")
 
-                print(f"Source: {' '.join(src_sentences[0]).encode('utf-8').decode('latin-1')}\nTarget: {' '.join(sentence_pair[0]).encode('utf-8').decode('latin-1')}\nPrediction: {' '.join(sentence_pair[1]).encode('utf-8').decode('latin-1')}\n")
+        # batch_bleu = [sentence_bleu([sentence_pair[0].split(' ')], sentence_pair[1].split(' '))
+        #                     for sentence_pair in sentence_pairs]
 
-            batch_bleu = np.array([sentence_bleu([sentence_pair[0]], sentence_pair[1], weights=(
-                0.25, 0.25, 0.25, 0.25)) for sentence_pair in sentence_pairs])
-            batch_bleus.append(batch_bleu.mean())
+        # batch_sacrebleu = [corpus_bleu(sentence_pair[1], sentence_pair[0]).score
+        #                     for sentence_pair in sentence_pairs]
 
-        bleu_score = np.array(batch_bleus).mean()
-        return bleu_score
+        # batch_bleus += batch_bleu
+        # batch_sacrebleus += batch_sacrebleu
 
-    return get_BLEU()
+        # print(f'Batch {i} | Bleu: {np.array(batch_bleu).mean() * 100} | Sacrebleu: {np.array(batch_sacrebleu).mean()}')
+
+    # bleu_score = np.array(batch_bleus).mean() * 100
+    # sacrebleu_score = np.array(batch_sacrebleus).mean()
+    # print(f'Avg bleu: {bleu_score} | Avg. sacrebleu: {sacrebleu_score}')
+    corpus_sacrebleu_score = corpus_bleu(hypotheses, [references])
+    corpus_bleu_score = nltk_corpus_bleu(references_tokenized, hypotheses_tokenized)
+    print(f'Corpus bleu: {corpus_bleu_score * 100} | Corpus sacrebleu: {corpus_sacrebleu_score.score}')
+    return corpus_sacrebleu_score.score

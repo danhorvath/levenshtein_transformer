@@ -18,13 +18,13 @@
 # if you want to receive e-mail notifications on a non-default address
 ##BSUB -u your_email_address
 ### -- send notification at start --
-#BSUB -B
+##BSUB -B
 ### -- send notification at completion--
-#BSUB -N
+##BSUB -N
 ### -- Specify the output and error file. %J is the job-id --
 ### -- -o and -e mean append, -oo and -eo mean overwrite --
-#BSUB -o gpu-%J.out
-#BSUB -e gpu_%J.err
+#BSUB -o transformer_%J.out
+#BSUB -e transformer_%J.err
 # -- end of LSF options --
 
 sxm2sh

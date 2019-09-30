@@ -1,8 +1,6 @@
 import time
-
-import torch
-import torch.nn as nn
 import wandb
+from en_de_config import config
 
 
 def run_epoch(data_iter, model, loss_compute, steps_so_far, batch_multiplier=1, logging=False):
@@ -16,96 +14,30 @@ def run_epoch(data_iter, model, loss_compute, steps_so_far, batch_multiplier=1, 
 
     for i, batch in enumerate(data_iter):
         effective_step = i / batch_multiplier
-        
+
         # update the model on steps defined by batch_multiplier or the last step in the epoch
         optimizer_step = effective_step.is_integer()
 
-        out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
+        out = model.forward(batch.src, batch.trg,
+                            batch.src_mask, batch.trg_mask)
 
         # TODO set number of batches if the number of iterations in the epoch is not dividable by batch_multiplier
-        loss = loss_compute(out, batch.trg_y, batch.ntokens, optimizer_step=optimizer_step)
+        loss = loss_compute(out, batch.trg_y, batch.ntokens,
+                            optimizer_step=optimizer_step)
 
         total_loss += loss
         total_tokens += batch.ntokens
         tokens += batch.ntokens
 
-        
         if logging and optimizer_step:
             elapsed = time.time() - start
-            wandb.log({'Step': steps_so_far + effective_step, 'Loss': loss *  batch_multiplier / batch.ntokens,
-                       'Tokens per Sec': tokens / elapsed, 'Learning rate': loss_compute.opt._rate})
+            wandb.log({'Step': steps_so_far + effective_step, 'Loss': loss * batch_multiplier / batch.ntokens,
+                       'Tokens per Sec': tokens / elapsed, 'Learning rate': loss_compute.opt._rate,
+                       'batch_length': len(batch.src), 'effective_batch_length': len(batch.src)*config['batch_multiplier']})
             if effective_step % 100 == 1:
-                print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} | Tokens per Sec: {tokens / elapsed} | Learning rate: {loss_compute.opt._rate}")
+                print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} " +
+                      f"| Tokens per Sec: {tokens / elapsed} | Learning rate: {loss_compute.opt._rate} | Batch length: {len(batch.src)}")
             start = time.time()
             tokens = 0
 
     return (total_loss / total_tokens, effective_step)
-
-
-class NoamOpt(object):
-    """
-    Optim wrapper that implements rate.
-    """
-
-    def __init__(self, model_size, factor, warmup, optimizer):
-        self.optimizer = optimizer
-        self._step = 0
-        self.warmup = warmup
-        self.factor = factor
-        self.model_size = model_size
-        self._rate = 0
-
-    def step(self):
-        """
-        Update parameters and rate
-        """
-        self._step += 1
-        rate = self.rate()
-        for p in self.optimizer.param_groups:
-            p['lr'] = rate
-        self._rate = rate
-        self.optimizer.step()
-
-    def rate(self, step=None):
-        """
-        Implement `lrate` above
-        """
-        if step is None:
-            step = self._step
-        return self.factor * (self.model_size ** -0.5) * min(step ** -0.5, step * self.warmup ** -1.5)
-
-
-def get_std_opt(model):
-    return NoamOpt(model.src_embed[0].d_model, 2, 4000,
-                   torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
-
-
-class LabelSmoothing(nn.Module):
-    """
-    Implement label smoothing. Basically this switches the original label distribution
-    (which is effectively a dirac delta) to a mixture of the original and a uniform distribution.
-    This helps the network to generalize better (and thus increase accuracy), but in turn will increase the perplexity.
-    q'(k) = (1-smoothing)*q(k) + smoothing*uniform(k) = (1-smoothing)*q(k) + smoothing * 1/output_size
-    """
-
-    def __init__(self, size, padding_idx, smoothing=0.0, batch_multiplier=1.):
-        super(LabelSmoothing, self).__init__()
-        self.criterion = nn.KLDivLoss(reduction='sum')
-        self.padding_idx = padding_idx
-        self.confidence = 1.0 - smoothing
-        self.smoothing = smoothing
-        self.size = size
-        self.true_dist = None
-        self.batch_multiplier = batch_multiplier
-
-    def forward(self, x, target):
-        assert x.size(1) == self.size
-        true_dist = x.data.clone()
-        true_dist.fill_(self.smoothing / (self.size - 2))
-        true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
-        true_dist[:, self.padding_idx] = 0
-        mask = torch.nonzero(target.data == self.padding_idx)
-        if mask.dim() > 0 and mask.size(-1) > 0:
-            true_dist.index_fill_(0, mask.squeeze(), 0.0)
-        self.true_dist = true_dist
-        return self.criterion(x, true_dist.clone().detach().requires_grad_(False)) / self.batch_multiplier
