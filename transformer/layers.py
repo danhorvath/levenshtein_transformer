@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformer.modules import clones, attention
 
-
 class Generator(nn.Module):
     """
     Define standard linear + softmax generation step.
@@ -164,7 +163,6 @@ class SublayerConnection(nn.Module):
         return x + self.dropout(sublayer(self.norm(x)))
 
 
-
 class PositionalEncoding(nn.Module):
     """Implement the PE function."""
 
@@ -185,11 +183,13 @@ class PositionalEncoding(nn.Module):
         x = x + self.positional_encoding[:, :x.size(1)].clone().detach().requires_grad_(True)
         return self.dropout(x)
 
+
 class Embeddings(nn.Module):
     def __init__(self, d_model, vocab):
         super(Embeddings, self).__init__()
         self.lookup_table = nn.Embedding(vocab, d_model)
         self.d_model = d_model
+        self.weight = nn.Parameter(torch.Tensor(vocab, d_model))
 
     def forward(self, x):
         return self.lookup_table(x) * math.sqrt(self.d_model)
