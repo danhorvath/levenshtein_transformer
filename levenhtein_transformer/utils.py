@@ -12,6 +12,7 @@ def _get_ins_targets(in_tokens, out_tokens, padding_idx, unk_idx):
     in_seq_len, out_seq_len = in_tokens.size(1), out_tokens.size(1)
 
     with torch.cuda.device_of(in_tokens):
+        # removing padding
         in_tokens_list = [
             [t for t in s if t != padding_idx] for i, s in enumerate(in_tokens.tolist())
         ]
