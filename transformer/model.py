@@ -1,8 +1,8 @@
 import torch.nn as nn
 from copy import deepcopy
 from transformer.sublayers import MultiHeadedAttention, PositionwiseFeedForward
-from transformer.layers import  PositionalEncoding, EncoderDecoder, Encoder, \
-        EncoderLayer, Decoder, DecoderLayer, Embeddings, Generator
+from transformer.layers import PositionalEncoding, EncoderDecoder, Encoder, \
+    EncoderLayer, Decoder, DecoderLayer, Embeddings, Generator
 
 
 def Transformer(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
@@ -26,4 +26,3 @@ def Transformer(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=
             nn.init.xavier_uniform_(p)
 
     return model
-
