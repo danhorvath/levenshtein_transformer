@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 from copy import deepcopy
 
+
 def attention(query, key, value, mask=None, dropout=None):
     """
     Compute 'Scaled Dot Product Attention'

@@ -7,6 +7,8 @@ from torchtext import data, datasets
 # from transformer.criteria import LabelSmoothing
 # from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from levenhtein_transformer.model import LevenshteinTransformerModel
+from transformer.data import MyIterator, batch_size_fn, rebatch
+from transformer.model import Transformer
 # from transformer.data import batch_size_fn, MyIterator, rebatch
 # from validator import validate
 # from utils import save_model
@@ -44,8 +46,8 @@ def main():
                                              test='newstest2014.tok.bpe.32000',
                                              fields=(SRC, TGT),
                                              filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
-                                             len(vars(x)['trg']
-                                                 ) <= config['max_len'],
+                                                                   len(vars(x)['trg']
+                                                                       ) <= config['max_len'],
                                              root='./.data/')
     print('Train set length: ', len(train))
 
@@ -64,8 +66,8 @@ def main():
     unk_idx = TGT.vocab.stoi[UNK]
     print(f'Indexes -- PAD: {pad_idx}, EOS: {eos_idx}, BOS: {bos_idx}, UNK: {unk_idx}')
 
-    # train_iter = MyIterator(train, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
-    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
+    train_iter = MyIterator(train, batch_size=4000, device=torch.device(0), repeat=False,
+                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
 
     # valid_iter = MyIterator(val, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
     #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
@@ -73,8 +75,9 @@ def main():
     # test_iter = MyIterator(test, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
     #                        sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), N=config['num_layers'], PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
-
+    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), N=4, PAD=pad_idx,
+                                        BOS=bos_idx, EOS=eos_idx, UNK=unk_idx, d_model=512, d_ff=1024, h=2, dropout=0.1)
+    # model = Transformer(len(SRC.vocab), len(TGT.vocab), N=config['num_layers'])
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
     model.generator.lookup_table.weight = model.tgt_embed[0].lookup_table.weight
@@ -83,11 +86,19 @@ def main():
 
     model_size = model.src_embed[0].d_model
     print('Model created with size of', model_size)
-    src = torch.tensor([[1, 1, 1, 5, 6]]).cuda()
-    src_mask = torch.tensor([[0, 0, 0, 1, 1]]).cuda()
-    prev = torch.tensor([[]]).cuda()
-    tgt = torch.tensor([[2, 3]]).cuda()
-    model.forward(src, src_mask, prev, tgt)
+    # src = torch.tensor([[1, 1, 1, 5, 6]]).cuda()
+    # src_mask = torch.tensor([[0, 0, 0, 1, 1]]).cuda()
+    x = torch.tensor([[1]]).cuda()
+    x_mask = torch.tensor([[1]]).cuda()
+    # tgt = torch.tensor([[0, 2, 3]]).cuda()
+    # tgt_mask = torch.tensor([[0, 1, 1]]).cuda()
+
+    batch = rebatch(pad_idx, next(iter(train_iter)))
+    ys = torch.ones(1, 1).fill_(bos_idx).type_as(batch.src.data)
+
+    model(batch.src, batch.trg, batch.src_mask, batch.trg_mask, batch.trg)
+    # model(src, x, src_mask, x_mask, tgt)
+    # model(src, tgt, src_mask, x_mask)
     # wandb.config.update({'model_size': model_size})
 
     # criterion = LabelSmoothing(
