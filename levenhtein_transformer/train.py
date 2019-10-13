@@ -5,7 +5,7 @@ from levenhtein_transformer.model import LevenshteinTransformerModel
 
 
 def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, steps_so_far, batch_multiplier=1,
-              logging=False):
+              logging=False, train=False):
     """
     Standard Training and Logging Function
     """
@@ -37,10 +37,11 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
         del_loss = criterion(word_del_out[word_del_mask], word_del_tgt[word_del_mask])
 
         loss = ins_loss + word_pred_loss + del_loss
-        loss.backward()
-        if optimizer_should_step:
-            opt.optimizer.step()
-            opt.optimizer.zero_grad()
+        if train:
+            loss.backward()
+            if optimizer_should_step:
+                opt.optimizer.step()
+                opt.optimizer.zero_grad()
 
         # TODO set number of batches if the number of iterations in the epoch is not dividable by batch_multiplier
 

@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 from torchtext import data, datasets
 
-# from train import run_epoch
-# from transformer.optimizer import NoamOpt
-# from transformer.criterion import LabelSmoothingKLLoss
+from levenhtein_transformer.train import run_epoch
+from transformer.optimizer import NoamOpt
+from transformer.criterion import LabelSmoothingKLLoss
 # from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from levenhtein_transformer.model import LevenshteinTransformerModel
 from transformer.data import MyIterator, batch_size_fn, rebatch_and_noise
@@ -69,39 +69,29 @@ def main():
     train_iter = MyIterator(train, batch_size=4000, device=torch.device(0), repeat=False,
                             sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
 
-    # valid_iter = MyIterator(val, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
-    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
+    valid_iter = MyIterator(val, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
+                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
     # test_iter = MyIterator(test, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
     #                        sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
     model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), N=4, PAD=pad_idx,
                                         BOS=bos_idx, EOS=eos_idx, UNK=unk_idx, d_model=512, d_ff=1024, h=2, dropout=0.1)
-    # model = Transformer(len(SRC.vocab), len(TGT.vocab), N=config['num_layers'])
+
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
     model.generator.lookup_table.weight = model.tgt_embed[0].lookup_table.weight
-
     model.cuda()
 
     model_size = model.src_embed[0].d_model
     print('Model created with size of', model_size)
-    # src = torch.tensor([[1, 1, 1, 5, 6]]).cuda()
-    # src_mask = torch.tensor([[0, 0, 0, 1, 1]]).cuda()
-    # tgt = torch.tensor([[0, 2, 3]]).cuda()
-    # tgt_mask = torch.tensor([[0, 1, 1]]).cuda()
 
     batch = rebatch_and_noise(next(iter(train_iter)), pad=pad_idx, bos=bos_idx, eos=eos_idx)
-
-    # model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask,
-    #       batch.trg)
-    # model(src, x, src_mask, x_mask, tgt)
-    # model(src, tgt, src_mask, x_mask)
     # wandb.config.update({'model_size': model_size})
 
-    # criterion = LabelSmoothing(
-    #     size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=config['batch_multiplier'])
-    # criterion.cuda()
+    criterion = LabelSmoothingKLLoss(
+        size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=config['batch_multiplier'])
+    criterion.cuda()
 
     # eval_criterion = LabelSmoothing(
     #     size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=1)
@@ -111,54 +101,60 @@ def main():
     out = model_par(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
     print(out)
 
-    # model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'], warmup_updates=config['warmup'],
-    #                     optimizer=torch.optim.Adam(model.parameters(), lr=0, betas=(config['beta_1'], config['beta_2']), eps=config['epsilon']))
+    model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
+                        warmup_updates=config['warmup'],
+                        optimizer=torch.optim.Adam(model.parameters(),
+                                                   lr=0,
+                                                   betas=(config['beta_1'], config['beta_2']),
+                                                   eps=config['epsilon']))
 
     # wandb.watch(model)
 
-    # current_steps = 0
-    # for epoch in range(1, config['max_epochs']+1):
-    #     # training model
-    #     model_par.train()
-    #     loss_calculator = MultiGPULossCompute(
-    #         model.generator, criterion, devices=devices, opt=model_opt)
+    current_steps = 0
+    for epoch in range(1, config['max_epochs'] + 1):
+        # training model
+        model_par.train()
 
-    #     (_,  steps) = run_epoch((rebatch(pad_idx, b) for b in train_iter),
-    #                             model_par,
-    #                             loss_calculator,
-    #                             steps_so_far=current_steps,
-    #                             batch_multiplier=config['batch_multiplier'],
-    #                             logging=True)
+        (_, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
+                               model=model_par,
+                               criterion=criterion,
+                               opt=model_opt,
+                               steps_so_far=current_steps,
+                               batch_multiplier=config['batch_multiplier'],
+                               logging=True,
+                               train=True)
 
-    #     current_steps += steps
+        current_steps += steps
 
-    #     # calculating validation loss and bleu score
-    #     model_par.eval()
-    #     loss_calculator_without_optimizer = MultiGPULossCompute(
-    #         model.generator, eval_criterion, devices=devices, opt=None)
+        # calculating validation loss and bleu score
+        model_par.eval()
 
-    #     (loss, _) = run_epoch((rebatch(pad_idx, b) for b in valid_iter),
-    #                           model_par,
-    #                           loss_calculator_without_optimizer,
-    #                           steps_so_far=current_steps)
+        (_, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
+                               model=model_par,
+                               criterion=criterion,
+                               opt=model_opt,
+                               steps_so_far=current_steps,
+                               batch_multiplier=config['batch_multiplier'],
+                               logging=False,
+                               train=False)
 
-    #     if (epoch > 10) or current_steps > config['max_step']:
-    #         # greedy decoding takes a while so Bleu won't be evaluated for every epoch
-    #         print('Calculating BLEU score...')
-    #         bleu = validate(model, valid_iter, SRC, TGT,
-    #                         BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'])
-    #         wandb.log({'Epoch bleu': bleu})
-    #         print(f'Epoch {epoch} | Bleu score: {bleu} ')
-
-    #     print(f"Epoch {epoch} | Loss: {loss}")
-    #     wandb.log({'Epoch': epoch, 'Epoch loss': loss})
-    #     if epoch > 10:
-    #         save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps, epoch=epoch)
-    #     if current_steps > config['max_step']:
-    #         break
+        # if (epoch > 10) or current_steps > config['max_step']:
+        #     # greedy decoding takes a while so Bleu won't be evaluated for every epoch
+        #     print('Calculating BLEU score...')
+        #     bleu = validate(model, valid_iter, SRC, TGT,
+        #                     BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'])
+        #     wandb.log({'Epoch bleu': bleu})
+        #     print(f'Epoch {epoch} | Bleu score: {bleu} ')
+        #
+        # print(f"Epoch {epoch} | Loss: {loss}")
+        # wandb.log({'Epoch': epoch, 'Epoch loss': loss})
+        # if epoch > 10:
+        #     save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps, epoch=epoch)
+        # if current_steps > config['max_step']:
+        #     break
 
     # save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps, epoch=epoch)
-
+    #
     # test_bleu = validate(model, test_iter, SRC, TGT,
     #                      BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'], logging=True)
     # print(f"Test Bleu score: {test_bleu}")
