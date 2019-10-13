@@ -189,19 +189,16 @@ class LevenshteinDecoder(Decoder):
         # ]
 
         features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-        out = self.embed_mask_ins(features_cat)
-        return F.log_softmax(out, dim=2)
+        return self.embed_mask_ins(features_cat)
 
     def forward_word_ins(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
                          x_mask: torch.Tensor):
-        features = self.forward(x, encoder_out, encoder_out_mask, x_mask)
-        return features
+        return self.forward(x, encoder_out, encoder_out_mask, x_mask)
 
     def forward_word_del(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
                          x_mask: torch.Tensor):
         features = self.forward(x, encoder_out, encoder_out_mask, x_mask)
-        out = self.embed_word_del(features)
-        return F.log_softmax(out, dim=2)
+        return self.embed_word_del(features)
 
     def forward_word_del_mask_ins(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
                                   x_mask: torch.Tensor):
