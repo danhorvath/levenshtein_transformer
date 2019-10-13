@@ -168,11 +168,14 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
 
 class LevenshteinDecoder(Decoder):
-    def __init__(self, layer, n, output_embed_dim):
+    def __init__(self, layer, n, output_embed_dim, tgt_vocab):
         super(LevenshteinDecoder, self).__init__(layer, n)
 
         # embeds the number of tokens to be inserted, max 256
         self.embed_mask_ins = nn.Linear(output_embed_dim * 2, 256)
+
+        # embeds the number of tokens to be inserted, max 256
+        self.embed_word_pred = nn.Linear(output_embed_dim, tgt_vocab)
 
         # embeds either 0 or 1
         self.embed_word_del = nn.Linear(output_embed_dim, 2)
@@ -193,7 +196,8 @@ class LevenshteinDecoder(Decoder):
 
     def forward_word_ins(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
                          x_mask: torch.Tensor):
-        return self.forward(x, encoder_out, encoder_out_mask, x_mask)
+        features = self.forward(x, encoder_out, encoder_out_mask, x_mask)
+        return self.embed_word_pred(features)
 
     def forward_word_del(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
                          x_mask: torch.Tensor):

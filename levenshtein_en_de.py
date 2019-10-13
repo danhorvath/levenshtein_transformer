@@ -103,7 +103,6 @@ def main():
 
     model_par = nn.DataParallel(model, device_ids=devices)
 
-
     model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
                         warmup_updates=config['warmup'],
                         optimizer=torch.optim.Adam(model.parameters(),
