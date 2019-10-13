@@ -86,20 +86,23 @@ def main():
     model_size = model.src_embed[0].d_model
     print('Model created with size of', model_size)
 
-    batch = rebatch_and_noise(next(iter(train_iter)), pad=pad_idx, bos=bos_idx, eos=eos_idx)
     # wandb.config.update({'model_size': model_size})
 
-    criterion = LabelSmoothingKLLoss(
+    insertion_criterion = LabelSmoothingKLLoss(
+        size=256, padding_idx=pad_idx, smoothing=0.1, batch_multiplier=config['batch_multiplier'])
+    insertion_criterion.cuda()
+    word_pred_criterion = LabelSmoothingKLLoss(
         size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=config['batch_multiplier'])
-    criterion.cuda()
-
+    word_pred_criterion.cuda()
+    del_criterion = LabelSmoothingKLLoss(
+        size=2, padding_idx=pad_idx, smoothing=0.1, batch_multiplier=config['batch_multiplier'])
+    del_criterion.cuda()
     # eval_criterion = LabelSmoothing(
     #     size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=1)
     # eval_criterion.cuda()
 
     model_par = nn.DataParallel(model, device_ids=devices)
-    out = model_par(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
-    print(out)
+
 
     model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
                         warmup_updates=config['warmup'],
@@ -117,7 +120,7 @@ def main():
 
         (_, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
                                model=model_par,
-                               criterion=criterion,
+                               criterions=[insertion_criterion, word_pred_criterion, del_criterion],
                                opt=model_opt,
                                steps_so_far=current_steps,
                                batch_multiplier=config['batch_multiplier'],

@@ -4,7 +4,7 @@ from en_de_config import config
 from levenhtein_transformer.model import LevenshteinTransformerModel
 
 
-def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, steps_so_far, batch_multiplier=1,
+def run_epoch(data_iter, model: LevenshteinTransformerModel, criterions, opt, steps_so_far, batch_multiplier=1,
               logging=False, train=False):
     """
     Standard Training and Logging Function
@@ -32,9 +32,10 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
         word_del_tgt = out["word_del_tgt"]
         word_del_mask = out["word_del_mask"]
 
-        ins_loss = criterion(ins_out[ins_mask], ins_tgt[ins_mask])
-        word_pred_loss = criterion(word_pred_out[word_pred_mask], word_pred_tgt[word_pred_mask])
-        del_loss = criterion(word_del_out[word_del_mask], word_del_tgt[word_del_mask])
+        print(word_pred_out[word_pred_mask].size(), word_pred_tgt[word_pred_mask].size())
+        ins_loss = criterions[0](ins_out[ins_mask], ins_tgt[ins_mask])
+        word_pred_loss = criterions[1](word_pred_out[word_pred_mask], word_pred_tgt[word_pred_mask])
+        del_loss = criterions[2](word_del_out[word_del_mask], word_del_tgt[word_del_mask])
 
         loss = ins_loss + word_pred_loss + del_loss
         if train:
