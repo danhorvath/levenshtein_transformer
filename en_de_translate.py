@@ -4,7 +4,7 @@ from torchtext import data, datasets
 
 from train import run_epoch
 from transformer.optimizer import NoamOpt
-from transformer.criteria import LabelSmoothing
+from transformer.criterion import LabelSmoothingKLLoss
 from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from transformer.model import Transformer
 from transformer.data import batch_size_fn, MyIterator, rebatch
@@ -15,11 +15,9 @@ from en_de_config import config
 
 import wandb
 
-
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
 BLANK_WORD = '<blank>'
-
 
 wandb.init(project="transformer")
 wandb.config.update(config)
@@ -43,8 +41,8 @@ def main():
                                              test='newstest2014.tok.bpe.32000',
                                              fields=(SRC, TGT),
                                              filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
-                                             len(vars(x)['trg']
-                                                 ) <= config['max_len'],
+                                                                   len(vars(x)['trg']
+                                                                       ) <= config['max_len'],
                                              root='./.data/')
     print('Train set length: ', len(train))
 
@@ -81,34 +79,38 @@ def main():
     print('Model created with size of', model_size)
     wandb.config.update({'model_size': model_size})
 
-    criterion = LabelSmoothing(
-        size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=config['batch_multiplier'])
+    criterion = LabelSmoothingKLLoss(size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1,
+                                     batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    eval_criterion = LabelSmoothing(
+    eval_criterion = LabelSmoothingKLLoss(
         size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=1)
     eval_criterion.cuda()
 
     model_par = nn.DataParallel(model, device_ids=devices)
 
-    model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'], warmup_updates=config['warmup'],
-                        optimizer=torch.optim.Adam(model.parameters(), lr=0, betas=(config['beta_1'], config['beta_2']), eps=config['epsilon']))
+    model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
+                        warmup_updates=config['warmup'],
+                        optimizer=torch.optim.Adam(model.parameters(),
+                                                   lr=0, betas=(config['beta_1'], config['beta_2']),
+                                                   eps=config['epsilon'])
+                        )
 
     wandb.watch(model)
 
     current_steps = 0
-    for epoch in range(1, config['max_epochs']+1):
+    for epoch in range(1, config['max_epochs'] + 1):
         # training model
         model_par.train()
         loss_calculator = MultiGPULossCompute(
             model.generator, criterion, devices=devices, opt=model_opt)
 
-        (_,  steps) = run_epoch((rebatch(pad_idx, b) for b in train_iter),
-                                model_par,
-                                loss_calculator,
-                                steps_so_far=current_steps,
-                                batch_multiplier=config['batch_multiplier'],
-                                logging=True)
+        (_, steps) = run_epoch((rebatch(pad_idx, b) for b in train_iter),
+                               model_par,
+                               loss_calculator,
+                               steps_so_far=current_steps,
+                               batch_multiplier=config['batch_multiplier'],
+                               logging=True)
 
         current_steps += steps
 
@@ -133,11 +135,13 @@ def main():
         print(f"Epoch {epoch} | Loss: {loss}")
         wandb.log({'Epoch': epoch, 'Epoch loss': loss})
         if epoch > 10:
-            save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps, epoch=epoch)
+            save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
+                       epoch=epoch)
         if current_steps > config['max_step']:
             break
 
-    save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps, epoch=epoch)
+    save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
+               epoch=epoch)
 
     test_bleu = validate(model, test_iter, SRC, TGT,
                          BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'], logging=True)

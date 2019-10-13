@@ -6,7 +6,7 @@ from torchtext import data, datasets
 from transformer.search import greedy_decode
 from train import  run_epoch
 from transformer.optimizer import NoamOpt
-from transformer.criteria import LabelSmoothing
+from transformer.criterion import LabelSmoothingKLLoss
 from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from transformer.model import Transformer
 from transformer.data import batch_size_fn, MyIterator, rebatch

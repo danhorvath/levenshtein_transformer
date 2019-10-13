@@ -1,15 +1,15 @@
 import torch
-# import torch.nn as nn
+import torch.nn as nn
 from torchtext import data, datasets
 
 # from train import run_epoch
 # from transformer.optimizer import NoamOpt
-# from transformer.criteria import LabelSmoothing
+# from transformer.criterion import LabelSmoothingKLLoss
 # from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from levenhtein_transformer.model import LevenshteinTransformerModel
-from transformer.data import MyIterator, batch_size_fn, rebatch
-from transformer.model import Transformer
-# from transformer.data import batch_size_fn, MyIterator, rebatch
+from transformer.data import MyIterator, batch_size_fn, rebatch_and_noise
+# from transformer.model import Transformer
+from transformer.data import batch_size_fn, MyIterator, rebatch
 # from validator import validate
 # from utils import save_model
 
@@ -88,15 +88,13 @@ def main():
     print('Model created with size of', model_size)
     # src = torch.tensor([[1, 1, 1, 5, 6]]).cuda()
     # src_mask = torch.tensor([[0, 0, 0, 1, 1]]).cuda()
-    x = torch.tensor([[1]]).cuda()
-    x_mask = torch.tensor([[1]]).cuda()
     # tgt = torch.tensor([[0, 2, 3]]).cuda()
     # tgt_mask = torch.tensor([[0, 1, 1]]).cuda()
 
-    batch = rebatch(pad_idx, next(iter(train_iter)))
-    ys = torch.ones(1, 1).fill_(bos_idx).type_as(batch.src.data)
+    batch = rebatch_and_noise(next(iter(train_iter)), pad=pad_idx, bos=bos_idx, eos=eos_idx)
 
-    model(batch.src, batch.trg, batch.src_mask, batch.trg_mask, batch.trg)
+    # model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask,
+    #       batch.trg)
     # model(src, x, src_mask, x_mask, tgt)
     # model(src, tgt, src_mask, x_mask)
     # wandb.config.update({'model_size': model_size})
@@ -109,7 +107,9 @@ def main():
     #     size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=1)
     # eval_criterion.cuda()
 
-    # model_par = nn.DataParallel(model, device_ids=devices)
+    model_par = nn.DataParallel(model, device_ids=devices)
+    out = model_par(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
+    print(out)
 
     # model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'], warmup_updates=config['warmup'],
     #                     optimizer=torch.optim.Adam(model.parameters(), lr=0, betas=(config['beta_1'], config['beta_2']), eps=config['epsilon']))

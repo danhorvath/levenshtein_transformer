@@ -5,7 +5,8 @@ import levenhtein_transformer.libnat as libnat
 # based on fairseq.libnat
 
 
-def _get_ins_targets(pred, target, padding_idx, unk_idx):
+def _get_ins_targets(pred: torch.Tensor, target: torch.Tensor, padding_idx: int, unk_idx: int) -> \
+        (torch.Tensor, torch.Tensor, torch.Tensor):
     """
     :param pred: torch.Tensor
     :param target: torch.Tensor
@@ -30,7 +31,7 @@ def _get_ins_targets(pred, target, padding_idx, unk_idx):
         pred_list, target_list, padding_idx
     )
 
-    # get insertion target with number of insertions eg. [0, 0, 4, 0]
+    # get insertion target with number of insertions eg. [0, 2, 1, 0, 2, 0]
     insertion_tgts = [[len(c) if c[0] != padding_idx else 0 for c in a[:-1]] for a in full_labels]
 
     # generate labels
@@ -51,8 +52,14 @@ def _get_ins_targets(pred, target, padding_idx, unk_idx):
     ]
 
     # transform to tensor
+
+    # word_pred_tgt_masks = [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, ..., 0]
     word_pred_tgt_masks = torch.tensor(word_pred_tgt_masks, device=target.device).bool()
+
+    # ins_targets = [0, 2, 1, 0, 2, 0, 0, 0, ..., 0]
     ins_targets = torch.tensor(ins_targets, device=pred.device)
+
+    # word_pred_tgt = [0, <unk>, <unk>, 0, <unk>, 0, 0, <unk>, <unk>, 0, 0, ..., 0]
     word_pred_tgt = target.masked_fill(word_pred_tgt_masks, unk_idx)
     return word_pred_tgt, word_pred_tgt_masks, ins_targets
 
@@ -125,12 +132,12 @@ def _get_del_ins_targets(in_tokens, out_tokens, padding_idx):
     return word_del_targets, mask_ins_targets
 
 
-def _apply_ins_masks(in_tokens, in_scores, mask_ins_pred, padding_idx, unk_idx, eos_idx):
-    in_masks = in_tokens.ne(padding_idx)
+def _apply_ins_masks(in_tokens: torch.Tensor, mask_ins_pred: torch.Tensor, pad: int, unk: int, eos: int):
+    in_masks = in_tokens.ne(pad)
     in_lengths = in_masks.sum(1)
 
     # HACK: hacky way to shift all the paddings to eos first.
-    in_tokens.masked_fill_(~in_masks, eos_idx)
+    in_tokens.masked_fill_(~in_masks, eos)
     mask_ins_pred.masked_fill_(~in_masks[:, 1:], 0)
 
     out_lengths = in_lengths + mask_ins_pred.sum(1)
@@ -143,41 +150,27 @@ def _apply_ins_masks(in_tokens, in_scores, mask_ins_pred, padding_idx, unk_idx, 
     reordering = (mask_ins_pred + in_masks[:, 1:].long()).cumsum(1)
     out_tokens = (
         in_tokens.new_zeros(in_tokens.size(0), out_max_len)
-            .fill_(padding_idx)
-            .masked_fill_(out_masks, unk_idx)
+            .fill_(pad)
+            .masked_fill_(out_masks, unk)
     )
     out_tokens[:, 0] = in_tokens[:, 0]
     out_tokens.scatter_(1, reordering, in_tokens[:, 1:])
 
-    out_scores = None
-    if in_scores is not None:
-        in_scores.masked_fill_(~in_masks, 0)
-        out_scores = in_scores.new_zeros(*out_tokens.size())
-        out_scores[:, 0] = in_scores[:, 0]
-        out_scores.scatter_(1, reordering, in_scores[:, 1:])
-
-    return out_tokens, out_scores
+    return out_tokens
 
 
-def _apply_ins_words(in_tokens, in_scores, word_ins_pred, word_ins_scores, unk_idx):
-    word_ins_masks = in_tokens.eq(unk_idx)
-    out_tokens = in_tokens.masked_scatter(
-        word_ins_masks, word_ins_pred[word_ins_masks])
+def _apply_ins_words(in_tokens: torch.Tensor, word_ins_pred: torch.Tensor, unk: int):
+    word_ins_masks = in_tokens.eq(unk)
+    out_tokens = in_tokens.masked_scatter(word_ins_masks, word_ins_pred[word_ins_masks])
 
-    if in_scores is not None:
-        out_scores = in_scores.masked_scatter(
-            word_ins_masks, word_ins_scores[word_ins_masks]
-        )
-    else:
-        out_scores = None
-
-    return out_tokens, out_scores
+    return out_tokens
 
 
-def _apply_del_words(in_tokens, in_scores, in_attn, word_del_pred, padding_idx, bos_idx, eos_idx):
+def _apply_del_words(in_tokens: torch.Tensor, word_del_pred: torch.Tensor, pad: int, bos: int,
+                     eos: int) -> torch.Tensor:
     # apply deletion to a tensor
-    in_masks = in_tokens.ne(padding_idx)
-    bos_eos_masks = in_tokens.eq(bos_idx) | in_tokens.eq(eos_idx)
+    in_masks = in_tokens.ne(pad)
+    bos_eos_masks = in_tokens.eq(bos) | in_tokens.eq(eos)
 
     max_len = in_tokens.size(1)
     word_del_pred.masked_fill_(~in_masks, 1)
@@ -192,20 +185,9 @@ def _apply_del_words(in_tokens, in_scores, in_attn, word_del_pred, padding_idx, 
     )
 
     out_tokens = in_tokens.masked_fill(
-        word_del_pred, padding_idx).gather(1, reordering)
+        word_del_pred, pad).gather(1, reordering)
 
-    out_scores = None
-    if in_scores is not None:
-        out_scores = in_scores.masked_fill(
-            word_del_pred, 0).gather(1, reordering)
-
-    out_attn = None
-    if in_attn is not None:
-        _mask = word_del_pred[:, :, None].expand_as(in_attn)
-        _reordering = reordering[:, :, None].expand_as(in_attn)
-        out_attn = in_attn.masked_fill(_mask, 0.).gather(1, _reordering)
-
-    return out_tokens, out_scores, out_attn
+    return out_tokens
 
 
 # from fairseq model_utils
@@ -236,7 +218,7 @@ def skip_tensors(x, mask):
     raise NotImplementedError
 
 
-def fill_tensors(x, mask, y, padding_idx):
+def fill_tensors(x: torch.Tensor, mask: torch.Tensor, y: torch.Tensor, padding_idx: int) -> torch.Tensor:
     """
     Filling tensor x with y at masked positions (dim=0).
     """
@@ -265,3 +247,31 @@ def fill_tensors(x, mask, y, padding_idx):
     else:
         x[mask] = y
     return x
+
+
+def inject_noise(target_tokens: torch.Tensor, pad, bos, eos):
+    max_len = target_tokens.size(1)
+    target_mask = target_tokens.eq(pad)
+    target_score = target_tokens.clone().float().uniform_()
+    target_score.masked_fill_(target_tokens.eq(bos) | target_tokens.eq(eos), 0.0)
+    target_score.masked_fill_(target_mask, 1)
+
+    # reorder the numbers randomly, with bos and eos at the beginning and paddings at the end
+    # ['<bos>', 'asd', 'kek', 'lol', '<bos>', '<pad>', '<pad>', '<pad>'] =>
+    # ['<bos>', '<bos>',  'kek', 'lol', 'asd','<pad>', '<pad>', '<pad>']
+    target_score, target_rank = target_score.sort(1)
+    target_length = target_mask.size(1) - target_mask.float().sum(1, keepdim=True)
+
+    # do not delete <bos> and <eos> (we assign 0 score for them)
+    # assign a new random length for each line, where: 2 < new_length < original_length
+    target_cutoff = 2 + ((target_length - 2) * target_score.new_zeros(target_score.size(0), 1).uniform_()).long()
+    target_cutoff = target_score.sort(1)[1] >= target_cutoff
+
+    # remove tokens after the cutoff
+    prev_target_tokens = target_tokens.gather(1, target_rank).masked_fill_(target_cutoff, pad) \
+        .gather(1, target_rank.masked_fill_(target_cutoff, max_len).sort(1)[1])
+
+    # remove unnecessary paddings
+    prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
+
+    return prev_target_tokens

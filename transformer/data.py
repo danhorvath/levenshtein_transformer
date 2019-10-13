@@ -1,11 +1,13 @@
 from torch.autograd import Variable
 from torchtext import data
 from transformer.modules import subsequent_mask
+from levenhtein_transformer.utils import inject_noise
 
 from en_de_config import config
 
 max_src_in_batch = config['batch_size']
 max_tgt_in_batch = config['batch_size']
+
 
 def batch_size_fn(new, count, size_so_far):
     """
@@ -53,6 +55,39 @@ class Batch(object):
         tgt_mask = (tgt != pad).unsqueeze(-2)
         tgt_mask = tgt_mask & Variable(
             subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data))
+        return tgt_mask
+
+
+def rebatch_and_noise(batch, pad: int, bos: int, eos: int):
+    """
+    Fix order in torchtext to match ours
+    """
+    src, trg = batch.src.transpose(0, 1), batch.trg.transpose(0, 1)
+    return BatchWithNoise(src=src, trg=trg, pad=pad, bos=bos, eos=eos)
+
+
+class BatchWithNoise(object):
+    """
+    Object for holding a batch of data with mask during training.
+    """
+
+    def __init__(self, src, pad: int, bos: int, eos: int, trg=None):
+        self.src = src
+        self.src_mask = (src != pad).unsqueeze(-2)
+        if trg is not None:
+            self.trg = trg
+            self.trg_mask = self.make_std_mask(self.trg, pad)
+            self.noised_trg = inject_noise(trg, pad=pad, bos=bos, eos=eos)
+            self.noised_trg_mask = self.make_std_mask(self.noised_trg, pad)
+            self.ntokens = (trg[:, 1:] != pad).data.sum().item()
+
+    @staticmethod
+    def make_std_mask(tgt, pad):
+        """
+        Create a mask to hide padding and future words.
+        """
+        tgt_mask = (tgt != pad).unsqueeze(-2)
+        tgt_mask = tgt_mask & Variable(subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data))
         return tgt_mask
 
 
