@@ -1,12 +1,13 @@
 import wandb
-from nltk.translate.bleu_score import sentence_bleu, corpus_bleu as nltk_corpus_bleu
+from nltk.translate.bleu_score import corpus_bleu as nltk_corpus_bleu
 from sacrebleu import corpus_bleu
-import numpy as np
-from transformer.search import greedy_decode
-from utils import vector_to_sentence, get_src_mask
+import torch
+from levenhtein_transformer.data import BatchWithNoise
+from utils import vector_to_sentence
 
 
-def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, max_len, logging=False):
+def validate(model, iterator, SRC, TGT, EOS_WORD, max_decode_iter=10, logging=False):
+    model.eval()
     print('Validating...')
     # TODO: paralell Bleu calculation
 
@@ -16,23 +17,29 @@ def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, max_le
     hypotheses = []
     references = []
 
-    for i, batch in enumerate(valid_iter):
-        src = batch.src.transpose(0, 1)
+    for i, batch in enumerate(iterator):
+        src = batch.noised_trg.transpose(0, 1)
         tgt = batch.trg.transpose(0, 1)
 
-        src_sentences = [vector_to_sentence(
-            src[i, :], SRC, 0) for i in range(src.size(0))]
+        src_sentences = [vector_to_sentence(src[i, :], SRC, EOS_WORD) for i in range(src.size(0))]
+        tgt_sentences = [vector_to_sentence(tgt[i, :], TGT, EOS_WORD) for i in range(tgt.size(0))]
 
-        tgt_sentences = [vector_to_sentence(tgt[i, :], TGT, EOS_WORD)
-                         for i in range(tgt.size(0))]
+        decode_iter = 0
+        prev_out = model.initialize_output_tokens(batch.noised_trg)
+        encoder_out = model.encode(batch.src, batch.src_mask)
+        out = torch.tensor([[]])
+        while decode_iter < max_decode_iter:
+            # out = model.decode(encoder_out, prev_out, batch.noised_trg_mask)
+            out = model.decode(encoder_out, batch.noised_trg, batch.src_mask)
+            print('Iter ', decode_iter)
 
-        out_seqs = [greedy_decode(model, src_sentence.unsqueeze(-2),
-                                  get_src_mask(src_sentence.unsqueeze(-2), SRC.vocab.stoi[BLANK_WORD]), max_len=max_len,
-                                  start_symbol=TGT.vocab.stoi[BOS_WORD], stop_symbol=TGT.vocab.stoi[EOS_WORD]) for
-                    src_sentence in src]
+            if out.tolist() == prev_out.tolist():
+                break
 
-        out_sentences = [vector_to_sentence(out_seq.squeeze(), TGT, EOS_WORD)
-                         for out_seq in out_seqs]
+            decode_iter += 1
+            prev_out = out
+
+        out_sentences = [vector_to_sentence(out[i, :], TGT, EOS_WORD) for i in range(out.size(0))]
 
         hypotheses_tokenized += [out_sentence.split(' ') for out_sentence in out_sentences]
         references_tokenized += [[tgt_sentence.split(' ')] for tgt_sentence in tgt_sentences]
@@ -44,8 +51,7 @@ def validate(model, valid_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, max_le
         if logging:
             # sentence_pair = list(sentence_pairs)[0]
 
-            print(
-                f"Source: {src_sentences[0]}\nTarget: {tgt_sentences[0]}\nPrediction: {out_sentences[0]}\n")
+            print(f"Source: {src_sentences[0]}\nTarget: {tgt_sentences[0]}\nPrediction: {out_sentences[0]}\n")
 
         # batch_bleu = [sentence_bleu([sentence_pair[0].split(' ')], sentence_pair[1].split(' '))
         #                     for sentence_pair in sentence_pairs]

@@ -27,9 +27,7 @@ def _get_ins_targets(pred: torch.Tensor, target: torch.Tensor, padding_idx: int,
             for i, s in enumerate(target.tolist())
         ]
 
-    full_labels = libnat.suggested_ed2_path(
-        pred_list, target_list, padding_idx
-    )
+    full_labels = libnat.suggested_ed2_path(pred_list, target_list, padding_idx)
 
     # get insertion target with number of insertions eg. [0, 2, 1, 0, 2, 0]
     insertion_tgts = [[len(c) if c[0] != padding_idx else 0 for c in a[:-1]] for a in full_labels]

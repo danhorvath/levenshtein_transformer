@@ -1,6 +1,6 @@
 import math
 import torch
-import torch.nn as nn
+from torch import nn, Tensor
 import torch.nn.functional as F
 from transformer.modules import clones
 
@@ -36,16 +36,16 @@ class EncoderDecoder(nn.Module):
         self.tgt_embed = tgt_embed
         self.generator = generator
 
-    def forward(self, src, tgt, src_mask, tgt_mask):
+    def forward(self, src: Tensor, tgt: Tensor, src_mask: Tensor, tgt_mask: Tensor):
         """
         Take in and process masked src and target sequences.
         """
         return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
 
-    def encode(self, src, src_mask):
+    def encode(self, src: Tensor, src_mask: Tensor):
         return self.encoder(self.src_embed(src), src_mask)
 
-    def decode(self, memory, src_mask, tgt, tgt_mask):
+    def decode(self, memory: Tensor, src_mask: Tensor, tgt: Tensor, tgt_mask: Tensor):
         return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
 
 
@@ -54,12 +54,12 @@ class Encoder(nn.Module):
     Core encoder is a stack of N layers
     """
 
-    def __init__(self, layer, n):
+    def __init__(self, layer, n: int):
         super(Encoder, self).__init__()
         self.layers = clones(layer, n)
         self.norm = LayerNorm(layer.size)
 
-    def forward(self, x, x_mask):
+    def forward(self, x: Tensor, x_mask: Tensor):
         """
         Pass the input (and mask) through each layer in turn.
         """
@@ -73,12 +73,12 @@ class Decoder(nn.Module):
     Generic N layer decoder with masking.
     """
 
-    def __init__(self, layer, n):
+    def __init__(self, layer, n: int):
         super(Decoder, self).__init__()
         self.layers = clones(layer, n)
         self.norm = LayerNorm(layer.size)
 
-    def forward(self, x, memory, src_mask, tgt_mask):
+    def forward(self, x: Tensor, memory: Tensor, src_mask: Tensor, tgt_mask: Tensor):
         for layer in self.layers:
             x = layer(x, memory, src_mask, tgt_mask)
         return self.norm(x)
@@ -96,7 +96,7 @@ class EncoderLayer(nn.Module):
         self.sublayer = clones(SublayerConnection(size, dropout), 2)
         self.size = size
 
-    def forward(self, x, mask):
+    def forward(self, x: Tensor, mask: Tensor):
         """
         Follow Figure 1 (left) for connections.
         """
@@ -117,10 +117,12 @@ class DecoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
 
-    def forward(self, x, memory, src_mask, tgt_mask):
+    def forward(self, x: Tensor, memory: Tensor, src_mask: Tensor, tgt_mask: Tensor):
         """
         Follow Figure 1 (right) for connections.
         """
+
+        # print(x.size(), memory.size(), src_mask.size(), tgt_mask.size())
         m = memory
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
         x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
@@ -142,7 +144,7 @@ class LayerNorm(nn.Module):
         self.b_2 = nn.Parameter(torch.zeros(features))
         self.eps = eps
 
-    def forward(self, x):
+    def forward(self, x: Tensor):
         mean = x.mean(dim=-1, keepdim=True)
         std = x.std(dim=-1, keepdim=True)
         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
@@ -159,7 +161,7 @@ class SublayerConnection(nn.Module):
         self.norm = LayerNorm(size)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, sublayer):
+    def forward(self, x: Tensor, sublayer: Tensor):
         """Apply residual connection to any sublayer with the same size."""
         return x + self.dropout(sublayer(self.norm(x)))
 
@@ -180,7 +182,7 @@ class PositionalEncoding(nn.Module):
         positional_encoding = positional_encoding.unsqueeze(0)
         self.register_buffer('positional_encoding', positional_encoding)
 
-    def forward(self, x):
+    def forward(self, x: Tensor):
         x = x + self.positional_encoding[:, :x.size(1)].clone().detach().requires_grad_(True)
         return self.dropout(x)
 
@@ -192,5 +194,5 @@ class Embeddings(nn.Module):
         self.d_model = d_model
         self.weight = nn.Parameter(torch.Tensor(vocab, d_model))
 
-    def forward(self, x):
+    def forward(self, x: Tensor):
         return self.lookup_table(x) * math.sqrt(self.d_model)

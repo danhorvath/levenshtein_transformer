@@ -2,14 +2,15 @@ import math
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import nn, Tensor
 from copy import deepcopy
 
 
-def attention(query, key, value, mask=None, dropout=None):
+def attention(query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None, dropout=None):
     """
     Compute 'Scaled Dot Product Attention'
     """
+    # print(query.size(), key.size(), value.size(), mask.size())
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:

@@ -4,6 +4,7 @@ import copy
 import collections
 import dill
 
+
 def load_models(example_model, paths):
     models = []
     for path in paths:
@@ -11,7 +12,7 @@ def load_models(example_model, paths):
         model.load_state_dict(torch.load(path))
         models.append(copy.deepcopy(model))
     return models
-    
+
 
 def average(model, models):
     "Average models into model"
@@ -23,33 +24,35 @@ def save_model(model, optimizer, loss, src_field, tgt_field, updates, epoch, pre
     if prefix != '':
         prefix += '_'
     current_date = datetime.now().strftime("%b-%d-%Y_%H-%M")
-    file_name = prefix + 'en-de__'+current_date+'.pt'
+    file_name = prefix + 'en-de__' + current_date + '.pt'
     torch.save({
-            'epoch': epoch,
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict() if optimizer is not None else None,
-            'loss': loss,
-            'updates': updates
-            }, file_name)
+        'epoch': epoch,
+        'model': model.state_dict(),
+        'optimizer': optimizer.state_dict() if optimizer is not None else None,
+        'loss': loss,
+        'updates': updates
+    }, file_name)
     torch.save(src_field, f'SRC_{len(src_field.vocab.itos)}.pt', pickle_module=dill)
     torch.save(tgt_field, f'TGT_{len(tgt_field.vocab.itos)}.pt', pickle_module=dill)
     print('Model is saved as {file_name}')
+
 
 def bpe_to_words(sentence):
     new_sentence = []
     for i in range(len(sentence)):
         word = sentence[i]
-        if word[-2:] == '@@' and i != len(sentence)-1:
-            sentence[i+1] = word[:-2]+sentence[i+1]
+        if word[-2:] == '@@' and i != len(sentence) - 1:
+            sentence[i + 1] = word[:-2] + sentence[i + 1]
         else:
             new_sentence.append(word)
     return new_sentence
 
-def vector_to_sentence(vector, field, EOS_WORD, start_from=1):
+
+def vector_to_sentence(vector: torch.Tensor, field, eos_word: str, start_from=1):
     sentence = []
-    for l in range(start_from, len(vector)):
+    for l in range(start_from, vector.size(0)):
         word = field.vocab.itos[vector[l]]
-        if word == EOS_WORD:
+        if word == eos_word:
             break
         sentence.append(word)
 

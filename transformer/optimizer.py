@@ -3,13 +3,14 @@ class NoamOpt(object):
     Optim wrapper that implements rate.
     """
 
-    def __init__(self, warmup_init_lr, warmup_end_lr, warmup_updates, optimizer):
+    def __init__(self, warmup_init_lr: float, warmup_end_lr: float, warmup_updates: float, min_lr: float, optimizer):
         self.optimizer = optimizer
         self._step = 0
         self.warmup_init_lr = warmup_init_lr
         self.warmup_end_lr = warmup_end_lr
         self.warmup_updates = warmup_updates
-        self.decay_factor = warmup_end_lr * warmup_updates**0.5
+        self.decay_factor = warmup_end_lr * warmup_updates ** 0.5
+        self.min_lr = min_lr
 
         self._rate = warmup_init_lr
 
@@ -34,6 +35,6 @@ class NoamOpt(object):
             step = self._step
 
         if step < self.warmup_updates:
-            return self.warmup_init_lr + step*self.warmup_lr_step
+            return self.warmup_init_lr + step * self.warmup_lr_step
         else:
-            return self.decay_factor * step**-0.5
+            return max(self.decay_factor * step ** -0.5, self.min_lr)

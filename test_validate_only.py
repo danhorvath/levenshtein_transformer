@@ -1,19 +1,11 @@
 import torch
-import torch.nn as nn
 from torchtext import data, datasets
 
-
-from transformer.search import greedy_decode
-from train import  run_epoch
-from transformer.optimizer import NoamOpt
-from transformer.criterion import LabelSmoothingKLLoss
-from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from transformer.model import Transformer
-from transformer.data import batch_size_fn, MyIterator, rebatch
+from transformer.data import batch_size_fn, MyIterator
 from validator import validate
-from utils import save_model, load_models, average_checkpoints
 
-from en_de_config import config
+from transformer.config import config
 import dill
 
 

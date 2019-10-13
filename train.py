@@ -1,6 +1,6 @@
 import time
 import wandb
-from en_de_config import config
+from transformer.config import config
 
 
 def run_epoch(data_iter, model, loss_compute, steps_so_far, batch_multiplier=1, logging=False):

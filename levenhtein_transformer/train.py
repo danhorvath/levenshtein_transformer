@@ -1,10 +1,10 @@
 import time
 import wandb
-from en_de_config import config
+from transformer.config import config
 from levenhtein_transformer.model import LevenshteinTransformerModel
 
 
-def run_epoch(data_iter, model: LevenshteinTransformerModel, criterions, opt, steps_so_far, batch_multiplier=1,
+def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, steps_so_far, batch_multiplier=1,
               logging=False, train=False):
     """
     Standard Training and Logging Function
@@ -20,8 +20,8 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterions, opt, st
         # update the model on steps defined by batch_multiplier or the last step in the epoch
         optimizer_should_step = effective_step.is_integer()
 
-        out = model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask,
-                    batch.trg)
+        out = model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
+
         ins_out = out["ins_out"]
         ins_tgt = out["ins_tgt"]
         ins_mask = out["ins_mask"]
@@ -32,10 +32,9 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterions, opt, st
         word_del_tgt = out["word_del_tgt"]
         word_del_mask = out["word_del_mask"]
 
-        print(word_pred_out[word_pred_mask].size(), word_pred_tgt[word_pred_mask].size())
-        ins_loss = criterions[0](ins_out[ins_mask], ins_tgt[ins_mask])
-        word_pred_loss = criterions[1](word_pred_out[word_pred_mask], word_pred_tgt[word_pred_mask])
-        del_loss = criterions[2](word_del_out[word_del_mask], word_del_tgt[word_del_mask])
+        ins_loss = criterion(outputs=ins_out, targets=ins_tgt, masks=ins_mask)
+        word_pred_loss = criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_mask)
+        del_loss = criterion(outputs=word_del_out, targets=word_del_tgt, masks=word_del_mask)
 
         loss = ins_loss + word_pred_loss + del_loss
         if train:
@@ -52,15 +51,15 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterions, opt, st
 
         if logging and optimizer_should_step:
             elapsed = time.time() - start
-            wandb.log({'Step': steps_so_far + effective_step,
-                       'Loss': loss * batch_multiplier / batch.ntokens,
-                       'Insertion loss': ins_loss * batch_multiplier / batch.ntokens,
-                       'Word prediction loss': word_pred_loss * batch_multiplier / batch.ntokens,
-                       'Deletion loss': del_loss * batch_multiplier / batch.ntokens,
-                       'Tokens per sec': tokens / elapsed, 'Learning rate': opt._rate,
-                       'batch_length': len(batch.src),
-                       'effective_batch_length': len(batch.src) * config['batch_multiplier']})
-            if effective_step % 100 == 1:
+            # wandb.log({'Step': steps_so_far + effective_step,
+            #            'Loss': loss * batch_multiplier / batch.ntokens,
+            #            'Insertion loss': ins_loss * batch_multiplier / batch.ntokens,
+            #            'Word prediction loss': word_pred_loss * batch_multiplier / batch.ntokens,
+            #            'Deletion loss': del_loss * batch_multiplier / batch.ntokens,
+            #            'Tokens per sec': tokens / elapsed, 'Learning rate': opt._rate,
+            #            'batch_length': len(batch.src),
+            #            'effective_batch_length': len(batch.src) * config['batch_multiplier']})
+            if effective_step % 100 == 1 or True:
                 print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} | " +
                       f"Insertion loss: {ins_loss * batch_multiplier / batch.ntokens} | " +
                       f"Word prediction loss: {word_pred_loss * batch_multiplier / batch.ntokens} | " +

@@ -4,13 +4,14 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
+from torch import Tensor
 import torch.nn.functional as F
 import torch.nn as nn
 
 from transformer.layers import Decoder, EncoderDecoder
 from levenhtein_transformer.utils import _apply_del_words, _apply_ins_masks, _apply_ins_words, \
     _get_del_targets, _get_ins_targets, fill_tensors as _fill, skip_tensors as _skip
-from transformer.data import BatchWithNoise
+from levenhtein_transformer.data import BatchWithNoise
 
 
 class LevenshteinEncodeDecoder(EncoderDecoder):
@@ -21,8 +22,8 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
         self.bos = bos
         self.unk = unk
 
-    def forward(self, src: torch.Tensor, x: torch.Tensor, src_mask: torch.Tensor, x_mask: torch.Tensor,
-                tgt: torch.Tensor):
+    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor,
+                tgt: Tensor):
 
         assert tgt is not None, "Forward function only supports training."
 
@@ -64,6 +65,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
         # generate training labels for deletion
         word_del_targets = _get_del_targets(word_predictions, tgt, self.pad)
+        print(encoder_out.size(), src_mask.size(), word_predictions.size(), word_predictions_subsequent_mask.size())
         # print('word_del_targets', word_del_targets[0], word_del_targets.size())
         word_del_out = self.decoder.forward_word_del(encoder_out, src_mask, self.tgt_embed(word_predictions),
                                                      word_predictions_subsequent_mask)
@@ -81,85 +83,102 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
             "word_del_mask": word_predictions.ne(self.pad),
         }
 
-    def forward_encoder(self, src, src_mask):
-        return self.self.encode(src, src_mask)
+    def encode(self, src: Tensor, src_mask: Tensor) -> Tensor:
+        return self.encoder(self.src_embed(src), src_mask)
 
-    def forward_decoder(self, output_tokens: torch.Tensor, encoder_out: torch.Tensor, eos_penalty=0.0,
-                        max_ratio=None) -> torch.Tensor:
-
-        # output_scores = decoder_out["output_scores"]
-        output_scores = None
+    def decode(self, encoder_out: Tensor, x: Tensor, encoder_padding_mask: Tensor,
+               eos_penalty=0.0, max_ratio=None) -> Tensor:
 
         if max_ratio is None:
-            max_lens = output_tokens.new(output_tokens.size(0)).fill_(255)
+            max_lens = x.new(x.size(0)).fill_(255)
         else:
-            max_lens = ((~encoder_out["encoder_padding_mask"]).sum(1) * max_ratio).clamp(min=10)
+            max_lens = ((~encoder_padding_mask).sum(1) * max_ratio).clamp(min=10)
 
         # delete words
-
         # do not delete tokens if it is <s> </s>
-        can_del_word = output_tokens.ne(self.pad).sum(1) > 2
+        can_del_word = x.ne(self.pad).sum(1) > 2
         if can_del_word.sum() != 0:  # we cannot delete, skip
-
+            x_mask = BatchWithNoise.make_std_mask(x, self.pad)
             word_del_out = self.decoder.forward_word_del(
-                _skip(output_tokens, can_del_word), _skip(encoder_out, can_del_word)
-            )
+                _skip(encoder_out, can_del_word),
+                _skip(encoder_padding_mask, can_del_word),
+                self.tgt_embed(_skip(x, can_del_word)),
+                _skip(x_mask, can_del_word))
+
             word_del_score = F.log_softmax(word_del_out, 2)
             word_del_pred = word_del_score.max(-1)[1].bool()
 
             _tokens = _apply_del_words(
-                output_tokens[can_del_word],
+                x[can_del_word],
                 word_del_pred,
                 self.pad,
                 self.bos,
                 self.eos,
             )
 
-            output_tokens = _fill(output_tokens, can_del_word, _tokens, self.pad)
+            x = _fill(x, can_del_word, _tokens, self.pad)
 
         # insert placeholders
-        can_ins_mask = output_tokens.ne(self.pad).sum(1) < max_lens
+        can_ins_mask = x.ne(self.pad).sum(1) < max_lens
         if can_ins_mask.sum() != 0:
-            mask_ins_out = self.decoder.forward_mask_ins(_skip(output_tokens, can_ins_mask),
-                                                         _skip(encoder_out, can_ins_mask))
+            x_mask = BatchWithNoise.make_std_mask(x, self.pad)
+            # torch.Size([15, 50, 512]) torch.Size([15, 1, 50]) torch.Size([15, 66]) torch.Size([15, 66, 66])
+            # torch.Size([32, 23, 512]) torch.Size([32, 1, 23]) torch.Size([32, 31]) torch.Size([32, 31, 31])
+            # torch.Size([18, 48, 512]) torch.Size([18, 1, 48]) torch.Size([18, 55]) torch.Size([18, 55, 55])
+            # torch.Size([31, 28, 512]) torch.Size([31, 1, 28]) torch.Size([31, 32]) torch.Size([31, 32, 32])
+            print(_skip(encoder_out, can_ins_mask).size(),
+                  _skip(encoder_padding_mask, can_ins_mask).size(),
+                  _skip(x, can_ins_mask).size(),
+                  _skip(x_mask, can_ins_mask).size())
+
+            mask_ins_out = self.decoder.forward_mask_ins(
+                _skip(encoder_out, can_ins_mask),
+                _skip(encoder_padding_mask, can_ins_mask),
+                self.tgt_embed(_skip(x, can_ins_mask)),
+                _skip(x_mask, can_ins_mask))
+
             mask_ins_score = F.log_softmax(mask_ins_out, 2)
             if eos_penalty > 0.0:
                 mask_ins_score[:, :, 0] -= eos_penalty
             mask_ins_pred = mask_ins_score.max(-1)[1]
             mask_ins_pred = torch.min(mask_ins_pred, max_lens[:, None].expand_as(mask_ins_pred))
 
-            _tokens, _scores = _apply_ins_masks(
-                output_tokens[can_ins_mask],
+            _tokens = _apply_ins_masks(
+                x[can_ins_mask],
                 mask_ins_pred,
                 self.pad,
                 self.unk,
                 self.eos,
             )
-            output_tokens = _fill(output_tokens, can_ins_mask, _tokens, self.pad)
+            x = _fill(x, can_ins_mask, _tokens, self.pad)
 
         # insert words
-        can_ins_word = output_tokens.eq(self.unk).sum(1) > 0
+        can_ins_word = x.eq(self.unk).sum(1) > 0
         if can_ins_word.sum() != 0:
-            word_ins_out = self.decoder.forward_word_ins(_skip(output_tokens, can_ins_word),
-                                                         _skip(encoder_out, can_ins_word))
+            x_mask = BatchWithNoise.make_std_mask(x, self.pad)
+            word_ins_out = self.decoder.forward_word_ins(
+                _skip(encoder_out, can_ins_word),
+                _skip(encoder_padding_mask, can_ins_word),
+                self.tgt_embed(_skip(x, can_ins_word)),
+                _skip(x_mask, can_ins_word))
+
             word_ins_score = F.log_softmax(word_ins_out, 2)
             word_ins_pred = word_ins_score.max(-1)[1]
 
             _tokens = _apply_ins_words(
-                output_tokens[can_ins_word],
+                x[can_ins_word],
                 word_ins_pred,
                 self.unk,
             )
 
-            output_tokens = _fill(output_tokens, can_ins_word, _tokens, self.pad)
+            x = _fill(x, can_ins_word, _tokens, self.pad)
 
         # delete some unnecessary paddings
-        cut_off = output_tokens.ne(self.pad).sum(1).max()
-        output_tokens = output_tokens[:, :]
-        output_scores = output_scores[:, :cut_off]
-        return output_tokens
+        cut_off = x.ne(self.pad).sum(1).max()
+        x = x[:, :]
+        return x
 
-    def initialize_output_tokens(self, src_tokens: torch.Tensor):
+    def initialize_output_tokens(self, src_tokens: Tensor):
         initial_output_tokens = src_tokens.new_zeros(src_tokens.size(0), 2)
         initial_output_tokens[:, 0] = self.bos
         initial_output_tokens[:, 1] = self.eos
@@ -168,21 +187,24 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
 
 class LevenshteinDecoder(Decoder):
-    def __init__(self, layer, n, output_embed_dim, tgt_vocab):
+    def __init__(self, layer, n, output_embed_dim, tgt_vocab, dropout=0.0):
         super(LevenshteinDecoder, self).__init__(layer, n)
 
         # embeds the number of tokens to be inserted, max 256
         self.embed_mask_ins = nn.Linear(output_embed_dim * 2, 256)
-
         # embeds the number of tokens to be inserted, max 256
         self.embed_word_pred = nn.Linear(output_embed_dim, tgt_vocab)
-
         # embeds either 0 or 1
         self.embed_word_del = nn.Linear(output_embed_dim, 2)
 
-    def forward_mask_ins(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
-                         x_mask: torch.Tensor):
-        features = self.forward(x, encoder_out, encoder_out_mask, x_mask)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def extract_features(self, x, encoder_out, encoder_out_mask, x_mask):
+        x = self.dropout(x)
+        return self.forward(x, encoder_out, encoder_out_mask, x_mask)
+
+    def forward_mask_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
         # creates pairs of consecutive words, so if the words are marked by their indices (0, 1, ... n):
         # [
         #   [0, 1],
@@ -194,20 +216,17 @@ class LevenshteinDecoder(Decoder):
         features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
         return self.embed_mask_ins(features_cat)
 
-    def forward_word_ins(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
-                         x_mask: torch.Tensor):
-        features = self.forward(x, encoder_out, encoder_out_mask, x_mask)
+    def forward_word_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
         return self.embed_word_pred(features)
 
-    def forward_word_del(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
-                         x_mask: torch.Tensor):
-        features = self.forward(x, encoder_out, encoder_out_mask, x_mask)
+    def forward_word_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
         return self.embed_word_del(features)
 
-    def forward_word_del_mask_ins(self, encoder_out: torch.Tensor, encoder_out_mask: torch.Tensor, x: torch.Tensor,
-                                  x_mask: torch.Tensor):
+    def forward_word_del_mask_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         # merge the word-deletion and mask insertion into one operation,
-        features = self.forward(x, encoder_out, encoder_out_mask, x_mask)
+        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
         features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
         f_word_del = F.log_softmax(self.embed_word_del(features), dim=2)
         f_mask_ins = F.log_softmax(self.embed_mask_ins(features_cat), dim=2)

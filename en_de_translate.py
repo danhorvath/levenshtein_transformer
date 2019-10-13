@@ -11,7 +11,7 @@ from transformer.data import batch_size_fn, MyIterator, rebatch
 from validator import validate
 from utils import save_model
 
-from en_de_config import config
+from transformer.config import config
 
 import wandb
 
