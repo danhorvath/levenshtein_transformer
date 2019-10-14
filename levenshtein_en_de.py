@@ -62,23 +62,14 @@ def main():
     unk_idx = TGT.vocab.stoi[UNK]
     print(f'Indexes -- PAD: {pad_idx}, EOS: {eos_idx}, BOS: {bos_idx}, UNK: {unk_idx}')
 
-    # train_iter = MyIterator(train, batch_size=1000, device=torch.device(0), repeat=False,
-    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
-    #
-    # valid_iter = MyIterator(val, batch_size=1000, device=torch.device(0), repeat=False,
-    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
+    train_iter = MyIterator(train, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
+                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
 
-    test_iter = MyIterator(test, batch_size=500, device=torch.device(0), repeat=False,
+    valid_iter = MyIterator(val, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
+                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
+
+    test_iter = MyIterator(test, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
-
-    # train_iter = MyIterator(train, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
-    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
-    #
-    # valid_iter = MyIterator(val, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
-    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
-    #
-    # test_iter = MyIterator(test, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
-    #                        sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
     model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
                                         BOS=bos_idx, EOS=eos_idx, UNK=unk_idx, d_model=256, d_ff=256, h=1,
@@ -120,24 +111,24 @@ def main():
 
     # wandb.watch(model)
 
-    # current_steps = 0
-    # for epoch in range(1, config['max_epochs'] + 1):
-    #     # training model
-    #     model_par.train()
-    #
-    #     (_, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
-    #                            model=model_par,
-    #                            criterion=criterion,
-    #                            opt=model_opt,
-    #                            steps_so_far=current_steps,
-    #                            batch_multiplier=config['batch_multiplier'],
-    #                            logging=True,
-    #                            train=True)
-    #
-    #     current_steps += steps
-    #
-    #     # calculating validation loss and bleu score
-    #     model_par.eval()
+    current_steps = 0
+    for epoch in range(1, config['max_epochs'] + 1):
+        # training model
+        model_par.train()
+
+        (_, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
+                               model=model_par,
+                               criterion=criterion,
+                               opt=model_opt,
+                               steps_so_far=current_steps,
+                               batch_multiplier=config['batch_multiplier'],
+                               logging=True,
+                               train=True)
+
+        current_steps += steps
+
+        # calculating validation loss and bleu score
+        model_par.eval()
     #
     #     (loss, _) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
     #                           model=model_par,

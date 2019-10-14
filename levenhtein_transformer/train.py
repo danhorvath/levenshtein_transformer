@@ -1,7 +1,7 @@
 import time
 import wandb
-from transformer.config import config
 from levenhtein_transformer.model import LevenshteinTransformerModel
+from levenhtein_transformer.config import config
 
 
 def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, steps_so_far, batch_multiplier=1,
@@ -13,6 +13,7 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
     total_tokens = 0
     total_loss = 0
     tokens = 0
+    effective_step = 0
 
     for i, batch in enumerate(data_iter):
         effective_step = i / batch_multiplier
@@ -56,15 +57,17 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
             #            'Insertion loss': ins_loss * batch_multiplier / batch.ntokens,
             #            'Word prediction loss': word_pred_loss * batch_multiplier / batch.ntokens,
             #            'Deletion loss': del_loss * batch_multiplier / batch.ntokens,
-            #            'Tokens per sec': tokens / elapsed, 'Learning rate': opt._rate,
-            #            'batch_length': len(batch.src),
-            #            'effective_batch_length': len(batch.src) * config['batch_multiplier']})
+            #            'Tokens per sec': tokens / elapsed,
+            #            'Learning rate': opt._rate,
+            #            'Batch length': len(batch.src),
+            #            'Effective batch length': len(batch.src) * config['batch_multiplier']})
             if effective_step % 100 == 1 or True:
                 print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} | " +
                       f"Insertion loss: {ins_loss * batch_multiplier / batch.ntokens} | " +
                       f"Word prediction loss: {word_pred_loss * batch_multiplier / batch.ntokens} | " +
                       f"Deletion loss: {del_loss * batch_multiplier / batch.ntokens} | " +
-                      f"Tokens per Sec: {tokens / elapsed} | Learning rate: {opt._rate} | Batch length: {len(batch.src)}")
+                      f"Tokens per Sec: {tokens / elapsed} | Learning rate: {opt._rate} | " +
+                      f"Batch length: {len(batch.src)}")
             start = time.time()
             tokens = 0
 

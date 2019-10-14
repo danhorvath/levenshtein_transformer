@@ -1,5 +1,5 @@
 BATCH_MULTIPLIER = 2.
-BATCH_SIZE = 20000  # 26000
+BATCH_SIZE = 10000  # 26000
 
 config = {'max_epochs': 100,  # max_step will terminate the training
           'num_layers': 6,

@@ -65,7 +65,6 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
         # generate training labels for deletion
         word_del_targets = _get_del_targets(word_predictions, tgt, self.pad)
-        print(encoder_out.size(), src_mask.size(), word_predictions.size(), word_predictions_subsequent_mask.size())
         # print('word_del_targets', word_del_targets[0], word_del_targets.size())
         word_del_out = self.decoder.forward_word_del(encoder_out, src_mask, self.tgt_embed(word_predictions),
                                                      word_predictions_subsequent_mask)
@@ -122,15 +121,6 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
         can_ins_mask = x.ne(self.pad).sum(1) < max_lens
         if can_ins_mask.sum() != 0:
             x_mask = BatchWithNoise.make_std_mask(x, self.pad)
-            # torch.Size([15, 50, 512]) torch.Size([15, 1, 50]) torch.Size([15, 66]) torch.Size([15, 66, 66])
-            # torch.Size([32, 23, 512]) torch.Size([32, 1, 23]) torch.Size([32, 31]) torch.Size([32, 31, 31])
-            # torch.Size([18, 48, 512]) torch.Size([18, 1, 48]) torch.Size([18, 55]) torch.Size([18, 55, 55])
-            # torch.Size([31, 28, 512]) torch.Size([31, 1, 28]) torch.Size([31, 32]) torch.Size([31, 32, 32])
-            print(_skip(encoder_out, can_ins_mask).size(),
-                  _skip(encoder_padding_mask, can_ins_mask).size(),
-                  _skip(x, can_ins_mask).size(),
-                  _skip(x_mask, can_ins_mask).size())
-
             mask_ins_out = self.decoder.forward_mask_ins(
                 _skip(encoder_out, can_ins_mask),
                 _skip(encoder_padding_mask, can_ins_mask),

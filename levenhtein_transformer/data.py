@@ -21,7 +21,7 @@ def batch_size_fn(new, count, size_so_far):
     max_tgt_in_batch = max(max_tgt_in_batch, len(new.trg) + 2)
     src_elements = count * max_src_in_batch
     tgt_elements = count * max_tgt_in_batch
-    return max(src_elements, tgt_elements * 2)
+    return max(src_elements, tgt_elements)
 
 
 def rebatch_and_noise(batch, pad: int, bos: int, eos: int):
@@ -42,9 +42,10 @@ class BatchWithNoise(object):
         self.src_mask = (src != pad).unsqueeze(-2)
         if trg is not None:
             self.trg = trg
-            self.ntokens = (trg[:, 1:] != pad).data.sum().item()
+            self.trg_mask = self.make_std_mask(self.trg, pad)
             self.noised_trg = inject_noise(trg, pad=pad, bos=bos, eos=eos)
             self.noised_trg_mask = self.make_std_mask(self.noised_trg, pad)
+            self.ntokens = (trg[:, 1:] != pad).data.sum().item()
 
     @staticmethod
     def make_std_mask(tgt, pad):
