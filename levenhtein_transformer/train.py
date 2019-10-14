@@ -20,6 +20,7 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
 
         # update the model on steps defined by batch_multiplier or the last step in the epoch
         optimizer_should_step = effective_step.is_integer()
+        current_batch_size = max(batch.src.size(0) * batch.src.size(1), batch.trg.size(0) * batch.trg.size(1))
 
         out = model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
 
@@ -52,22 +53,22 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
 
         if logging and optimizer_should_step:
             elapsed = time.time() - start
-            # wandb.log({'Step': steps_so_far + effective_step,
-            #            'Loss': loss * batch_multiplier / batch.ntokens,
-            #            'Insertion loss': ins_loss * batch_multiplier / batch.ntokens,
-            #            'Word prediction loss': word_pred_loss * batch_multiplier / batch.ntokens,
-            #            'Deletion loss': del_loss * batch_multiplier / batch.ntokens,
-            #            'Tokens per sec': tokens / elapsed,
-            #            'Learning rate': opt._rate,
-            #            'Batch length': len(batch.src),
-            #            'Effective batch length': len(batch.src) * config['batch_multiplier']})
-            if effective_step % 100 == 1 or True:
+            wandb.log({'Step': steps_so_far + effective_step,
+                       'Loss': loss * batch_multiplier / batch.ntokens,
+                       'Insertion loss': ins_loss * batch_multiplier / batch.ntokens,
+                       'Word prediction loss': word_pred_loss * batch_multiplier / batch.ntokens,
+                       'Deletion loss': del_loss * batch_multiplier / batch.ntokens,
+                       'Tokens per sec': tokens / elapsed,
+                       'Learning rate': opt._rate,
+                       'Batch length': current_batch_size,
+                       'Effective batch length': current_batch_size * config['batch_multiplier']})
+            if effective_step % 100 == 1:
                 print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} | " +
                       f"Insertion loss: {ins_loss * batch_multiplier / batch.ntokens} | " +
                       f"Word prediction loss: {word_pred_loss * batch_multiplier / batch.ntokens} | " +
                       f"Deletion loss: {del_loss * batch_multiplier / batch.ntokens} | " +
                       f"Tokens per Sec: {tokens / elapsed} | Learning rate: {opt._rate} | " +
-                      f"Batch length: {len(batch.src)}")
+                      f"Batch length: {current_batch_size}")
             start = time.time()
             tokens = 0
 

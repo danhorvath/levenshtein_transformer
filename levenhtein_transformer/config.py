@@ -1,7 +1,8 @@
 from torch.cuda import device_count
 
 BATCH_MULTIPLIER = 2.
-BATCH_SIZE = 5000 * device_count()
+SINGLE_GPU_BATCH_SIZE = 4000
+BATCH_SIZE = SINGLE_GPU_BATCH_SIZE * device_count()
 
 config = {'max_epochs': 100,  # max_step will terminate the training
           'num_layers': 6,
@@ -11,7 +12,7 @@ config = {'max_epochs': 100,  # max_step will terminate the training
           'batch_size': BATCH_SIZE,
           'batch_multiplier': BATCH_MULTIPLIER,
           'effective_batch_size': BATCH_SIZE * BATCH_MULTIPLIER,
-          'val_batch_size': BATCH_SIZE // 2,
+          'val_batch_size': SINGLE_GPU_BATCH_SIZE * BATCH_MULTIPLIER // 2,
           'max_decode_iter': 10,
           'max_len': 150,
           'min_freq': 1,
