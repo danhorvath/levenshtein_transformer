@@ -89,9 +89,10 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
                eos_penalty=0.0, max_ratio=None) -> Tensor:
 
         if max_ratio is None:
-            max_lens = x.new(x.size(0)).fill_(255)
+            max_lens = x.new().fill_(255)
         else:
-            max_lens = ((~encoder_padding_mask).sum(1) * max_ratio).clamp(min=10)
+            src_lens = encoder_padding_mask.squeeze(1).sum(1)
+            max_lens = (src_lens * max_ratio).clamp(min=10).long()
 
         # delete words
         # do not delete tokens if it is <s> </s>
@@ -131,7 +132,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
             if eos_penalty > 0.0:
                 mask_ins_score[:, :, 0] -= eos_penalty
             mask_ins_pred = mask_ins_score.max(-1)[1]
-            mask_ins_pred = torch.min(mask_ins_pred, max_lens[:, None].expand_as(mask_ins_pred))
+            mask_ins_pred = torch.min(mask_ins_pred, max_lens[can_ins_mask, None].expand_as(mask_ins_pred))
 
             _tokens = _apply_ins_masks(
                 x[can_ins_mask],
@@ -165,15 +166,8 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
         # delete some unnecessary paddings
         cut_off = x.ne(self.pad).sum(1).max()
-        x = x[:, :]
+        x = x[:, :cut_off]
         return x
-
-    def initialize_output_tokens(self, src_tokens: Tensor):
-        initial_output_tokens = src_tokens.new_zeros(src_tokens.size(0), 2)
-        initial_output_tokens[:, 0] = self.bos
-        initial_output_tokens[:, 1] = self.eos
-
-        return initial_output_tokens
 
 
 class LevenshteinDecoder(Decoder):

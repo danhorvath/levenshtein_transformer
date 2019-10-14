@@ -1,12 +1,13 @@
 import wandb
+import torch
 from nltk.translate.bleu_score import corpus_bleu as nltk_corpus_bleu
 from sacrebleu import corpus_bleu
-import torch
-from levenhtein_transformer.data import BatchWithNoise
+from levenhtein_transformer.config import config
+from levenhtein_transformer.utils import initialize_output_tokens
 from utils import vector_to_sentence
 
 
-def validate(model, iterator, SRC, TGT, EOS_WORD, max_decode_iter=10, logging=False):
+def validate(model, iterator, SRC, TGT, EOS_WORD, eos, bos, max_decode_iter=10, logging=False):
     model.eval()
     print('Validating...')
     # TODO: parallel Bleu calculation
@@ -20,18 +21,16 @@ def validate(model, iterator, SRC, TGT, EOS_WORD, max_decode_iter=10, logging=Fa
     for i, batch in enumerate(iterator):
         src = batch.src
         tgt = batch.trg
-        print(batch.src.size(), batch.noised_trg.size(), batch.trg.size())
 
         src_sentences = [vector_to_sentence(src[i, :], SRC, EOS_WORD, start_from=0) for i in range(src.size(0))]
         tgt_sentences = [vector_to_sentence(tgt[i, :], TGT, EOS_WORD) for i in range(tgt.size(0))]
 
         decode_iter = 0
-        prev_out = model.initialize_output_tokens(batch.noised_trg)
+        prev_out = initialize_output_tokens(batch.noised_trg, bos=bos, eos=eos)
         encoder_out = model.encode(batch.src, batch.src_mask)
         out = torch.tensor([[]])
         while decode_iter < max_decode_iter:
-            out = model.decode(encoder_out, prev_out, batch.src_mask)
-            print(out.size())
+            out = model.decode(encoder_out, prev_out, batch.src_mask, max_ratio=config['max_decoder_ratio'])
 
             if out.tolist() == prev_out.tolist():
                 break

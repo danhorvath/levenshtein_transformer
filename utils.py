@@ -57,7 +57,7 @@ def vector_to_sentence(vector: torch.Tensor, field, eos_word: str, start_from=1)
         sentence.append(word)
 
     # fixing encoding
-    sentence = ' '.join(bpe_to_words(sentence)).encode('utf-8').decode('latin-1')
+    sentence = ' '.join(bpe_to_words(sentence))#.encode('utf-8').decode('latin-1')
     return sentence
 
 

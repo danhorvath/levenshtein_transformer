@@ -1,15 +1,16 @@
 import torch
+from torch import Tensor
 import levenhtein_transformer.libnat as libnat
 
 
 # based on fairseq.libnat
 
 
-def _get_ins_targets(pred: torch.Tensor, target: torch.Tensor, padding_idx: int, unk_idx: int) -> \
-        (torch.Tensor, torch.Tensor, torch.Tensor):
+def _get_ins_targets(pred: Tensor, target: Tensor, padding_idx: int, unk_idx: int) -> \
+        (Tensor, Tensor, Tensor):
     """
-    :param pred: torch.Tensor
-    :param target: torch.Tensor
+    :param pred: Tensor
+    :param target: Tensor
     :param padding_idx: long
     :param unk_idx: long
     :return: word_pred_tgt, word_pred_tgt_masks, ins_targets
@@ -130,7 +131,7 @@ def _get_del_ins_targets(in_tokens, out_tokens, padding_idx):
     return word_del_targets, mask_ins_targets
 
 
-def _apply_ins_masks(in_tokens: torch.Tensor, mask_ins_pred: torch.Tensor, pad: int, unk: int, eos: int):
+def _apply_ins_masks(in_tokens: Tensor, mask_ins_pred: Tensor, pad: int, unk: int, eos: int):
     in_masks = in_tokens.ne(pad)
     in_lengths = in_masks.sum(1)
 
@@ -157,15 +158,15 @@ def _apply_ins_masks(in_tokens: torch.Tensor, mask_ins_pred: torch.Tensor, pad: 
     return out_tokens
 
 
-def _apply_ins_words(in_tokens: torch.Tensor, word_ins_pred: torch.Tensor, unk: int):
+def _apply_ins_words(in_tokens: Tensor, word_ins_pred: Tensor, unk: int):
     word_ins_masks = in_tokens.eq(unk)
     out_tokens = in_tokens.masked_scatter(word_ins_masks, word_ins_pred[word_ins_masks])
 
     return out_tokens
 
 
-def _apply_del_words(in_tokens: torch.Tensor, word_del_pred: torch.Tensor, pad: int, bos: int,
-                     eos: int) -> torch.Tensor:
+def _apply_del_words(in_tokens: Tensor, word_del_pred: Tensor, pad: int, bos: int,
+                     eos: int) -> Tensor:
     # apply deletion to a tensor
     in_masks = in_tokens.ne(pad)
     bos_eos_masks = in_tokens.eq(bos) | in_tokens.eq(eos)
@@ -201,7 +202,7 @@ def skip_tensors(x, mask):
     if x is None:
         return None
 
-    if isinstance(x, torch.Tensor):
+    if isinstance(x, Tensor):
         if x.size(0) == mask.size(0):
             return x[mask]
         elif x.size(1) == mask.size(0):
@@ -216,7 +217,7 @@ def skip_tensors(x, mask):
     raise NotImplementedError
 
 
-def fill_tensors(x: torch.Tensor, mask: torch.Tensor, y: torch.Tensor, padding_idx: int) -> torch.Tensor:
+def fill_tensors(x: Tensor, mask: Tensor, y: Tensor, padding_idx: int) -> Tensor:
     """
     Filling tensor x with y at masked positions (dim=0).
     """
@@ -247,7 +248,7 @@ def fill_tensors(x: torch.Tensor, mask: torch.Tensor, y: torch.Tensor, padding_i
     return x
 
 
-def inject_noise(target_tokens: torch.Tensor, pad, bos, eos):
+def inject_noise(target_tokens: Tensor, pad, bos, eos):
     max_len = target_tokens.size(1)
     target_mask = target_tokens.eq(pad)
     target_score = target_tokens.clone().float().uniform_()
@@ -273,3 +274,11 @@ def inject_noise(target_tokens: torch.Tensor, pad, bos, eos):
     prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
 
     return prev_target_tokens
+
+
+def initialize_output_tokens(src_tokens: Tensor, bos: int, eos: int):
+    initial_output_tokens = src_tokens.new_zeros(src_tokens.size(0), 2)
+    initial_output_tokens[:, 0] = bos
+    initial_output_tokens[:, 1] = eos
+
+    return initial_output_tokens

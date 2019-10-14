@@ -65,10 +65,10 @@ def main():
     train_iter = MyIterator(train, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
                             sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
 
-    valid_iter = MyIterator(val, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
+    valid_iter = MyIterator(val, batch_size=config['val_batch_size'], device=torch.device(0), repeat=False,
                             sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
-    test_iter = MyIterator(test, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
+    test_iter = MyIterator(test, batch_size=config['val_batch_size'], device=torch.device(0), repeat=False,
                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
     model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
@@ -98,7 +98,14 @@ def main():
     criterion = LabelSmoothingLoss(label_smoothing=0.1, batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    model_par = nn.DataParallel(model, device_ids=devices)
+    class MyDataParallel(nn.DataParallel):
+        def __getattr__(self, name):
+            try:
+                return super(MyDataParallel, self).__getattr__(name)
+            except AttributeError:
+                return getattr(self.module, name)
+
+    model_par = MyDataParallel(model, device_ids=devices)
 
     model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
                         warmup_updates=config['warmup'],
@@ -111,24 +118,24 @@ def main():
 
     # wandb.watch(model)
 
-    current_steps = 0
-    for epoch in range(1, config['max_epochs'] + 1):
-        # training model
-        model_par.train()
-
-        (_, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
-                               model=model_par,
-                               criterion=criterion,
-                               opt=model_opt,
-                               steps_so_far=current_steps,
-                               batch_multiplier=config['batch_multiplier'],
-                               logging=True,
-                               train=True)
-
-        current_steps += steps
-
-        # calculating validation loss and bleu score
-        model_par.eval()
+    # current_steps = 0
+    # for epoch in range(1, config['max_epochs'] + 1):
+    #     # training model
+    #     model_par.train()
+    #
+    #     (_, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
+    #                            model=model_par,
+    #                            criterion=criterion,
+    #                            opt=model_opt,
+    #                            steps_so_far=current_steps,
+    #                            batch_multiplier=config['batch_multiplier'],
+    #                            logging=True,
+    #                            train=True)
+    #
+    #     current_steps += steps
+    #
+    #     # calculating validation loss and bleu score
+    #     model_par.eval()
     #
     #     (loss, _) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
     #                           model=model_par,
@@ -158,9 +165,10 @@ def main():
     # save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
     #            epoch=epoch)
 
-    test_bleu = validate(model=model,
+    test_bleu = validate(model=model_par,
                          iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in test_iter),
-                         SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, max_decode_iter=config['max_decode_iter'], logging=True)
+                         SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
+                         max_decode_iter=config['max_decode_iter'], logging=True)
     print(f"Test Bleu score: {test_bleu}")
     # wandb.config.update({'Test bleu score': test_bleu})
 
