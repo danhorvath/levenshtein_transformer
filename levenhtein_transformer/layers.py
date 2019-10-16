@@ -15,14 +15,15 @@ from levenhtein_transformer.data import BatchWithNoise
 
 
 class LevenshteinEncodeDecoder(EncoderDecoder):
-    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator, pad, bos, eos, unk):
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator, pad, bos, eos, unk, criterion):
         super(LevenshteinEncodeDecoder, self).__init__(encoder, decoder, src_embed, tgt_embed, generator)
         self.pad = pad
         self.eos = eos
         self.bos = bos
         self.unk = unk
+        self.criterion = criterion
 
-    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor, tgt: Tensor, criterion):
+    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor, tgt: Tensor):
 
         assert tgt is not None, "Forward function only supports training."
 
@@ -51,23 +52,23 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
                                                      word_predictions_subsequent_mask)
         word_del_mask = word_predictions.ne(self.pad)
 
-        ins_loss = criterion(outputs=ins_out, targets=ins_targets, masks=ins_masks)
-        word_pred_loss = criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_tgt_masks)
-        word_del_loss = criterion(outputs=word_del_out, targets=word_del_targets, masks=word_del_mask)
+        ins_loss = self.criterion(outputs=ins_out, targets=ins_targets, masks=ins_masks)
+        word_pred_loss = self.criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_tgt_masks)
+        word_del_loss = self.criterion(outputs=word_del_out, targets=word_del_targets, masks=word_del_mask)
 
         return {
             "ins_out": ins_out,
             "ins_tgt": ins_targets,
             "ins_mask": ins_masks,
-            "ins_loss": ins_loss.item(),
+            "ins_loss": ins_loss,
             "word_pred_out": word_pred_out,
             "word_pred_tgt": tgt,
             "word_pred_mask": word_pred_tgt_masks,
-            "word_pred_loss": word_pred_loss.item(),
+            "word_pred_loss": word_pred_loss,
             "word_del_out": word_del_out,
             "word_del_tgt": word_del_targets,
             "word_del_mask": word_del_mask,
-            "word_del_loss": word_del_loss.item(),
+            "word_del_loss": word_del_loss,
             "loss": ins_loss + word_pred_loss + word_del_loss
         }
 
