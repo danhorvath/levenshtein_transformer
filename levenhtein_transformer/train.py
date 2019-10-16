@@ -22,30 +22,33 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
         optimizer_should_step = effective_step.is_integer()
         current_batch_size = max(batch.src.size(0) * batch.src.size(1), batch.trg.size(0) * batch.trg.size(1))
 
-        out = model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
+        out = model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg, criterion=criterion)
 
         ins_out = out["ins_out"]
         ins_tgt = out["ins_tgt"]
         ins_mask = out["ins_mask"]
+        ins_loss = out['ins_loss'] / batch.ntokens
+        # print(out['ins_loss'])
+
         word_pred_out = out["word_pred_out"]
         word_pred_tgt = out["word_pred_tgt"]
         word_pred_mask = out["word_pred_mask"]
+        word_pred_loss = out['word_pred_loss'] / batch.ntokens
+        # print(batch.trg.shape, word_pred_out.shape, word_pred_tgt.shape)
+
         word_del_out = out["word_del_out"]
         word_del_tgt = out["word_del_tgt"]
         word_del_mask = out["word_del_mask"]
+        word_del_loss = out['word_del_loss'] / batch.ntokens
 
-        ins_loss = criterion(outputs=ins_out, targets=ins_tgt, masks=ins_mask)
-        word_pred_loss = criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_mask)
-        del_loss = criterion(outputs=word_del_out, targets=word_del_tgt, masks=word_del_mask)
-
-        loss = ins_loss + word_pred_loss + del_loss
+        loss = out['loss'].sum() / batch.ntokens
         if train:
             loss.backward()
             if optimizer_should_step:
                 opt.step()
                 opt.optimizer.zero_grad()
 
-        total_loss += loss.item() / batch.ntokens
+        total_loss += loss.item()
         total_tokens += batch.ntokens
         tokens += batch.ntokens
 
@@ -55,16 +58,16 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
                        'Loss': loss * batch_multiplier / batch.ntokens,
                        'Insertion loss': ins_loss * batch_multiplier / batch.ntokens,
                        'Word prediction loss': word_pred_loss * batch_multiplier / batch.ntokens,
-                       'Deletion loss': del_loss * batch_multiplier / batch.ntokens,
+                       'Deletion loss': word_del_loss * batch_multiplier / batch.ntokens,
                        'Tokens per sec': tokens / elapsed,
                        'Learning rate': opt._rate,
                        'Batch length': current_batch_size,
                        'Effective batch length': current_batch_size * config['batch_multiplier']})
-            if effective_step % 100 == 1:
+            if effective_step % 100 == 1 or True:
                 print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} | " +
                       f"Insertion loss: {ins_loss * batch_multiplier / batch.ntokens} | " +
                       f"Word prediction loss: {word_pred_loss * batch_multiplier / batch.ntokens} | " +
-                      f"Deletion loss: {del_loss * batch_multiplier / batch.ntokens} | " +
+                      f"Deletion loss: {word_del_loss * batch_multiplier / batch.ntokens} | " +
                       f"Tokens per Sec: {tokens / elapsed} | Learning rate: {opt._rate} | " +
                       f"Batch length: {current_batch_size}")
             start = time.time()
