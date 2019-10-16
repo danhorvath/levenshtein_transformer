@@ -145,9 +145,9 @@ def main():
                               batch_multiplier=config['batch_multiplier'],
                               logging=False,
                               train=False)
-    
+
+        wandb.log({'Epoch': epoch, 'Epoch loss': loss})
         if (epoch > 10) or current_steps > config['max_step']:
-            # greedy decoding takes a while so Bleu won't be evaluated for every epoch
             print('Calculating BLEU score...')
             bleu = validate(model=model_par,
                             iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
@@ -157,7 +157,6 @@ def main():
             print(f'Epoch {epoch} | Bleu score: {bleu} ')
     
         print(f"Epoch {epoch} | Loss: {loss}")
-        wandb.log({'Epoch': epoch, 'Epoch loss': loss})
         if epoch > 10:
             save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
                        epoch=epoch, prefix='lev_t')

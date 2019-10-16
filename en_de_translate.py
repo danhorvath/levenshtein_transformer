@@ -2,13 +2,13 @@ import torch
 import torch.nn as nn
 from torchtext import data, datasets
 
-from train import run_epoch
+from transformer.train import run_epoch
 from transformer.optimizer import NoamOpt
 from transformer.criterion import LabelSmoothingKLLoss
 from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from transformer.model import Transformer
 from transformer.data import batch_size_fn, MyIterator, rebatch
-from validator import validate
+from transformer.validator import validate
 from utils import save_model
 
 from transformer.config import config
@@ -91,6 +91,7 @@ def main():
 
     model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
                         warmup_updates=config['warmup'],
+                        min_lr=config['warmup_init_lr'],
                         optimizer=torch.optim.Adam(model.parameters(),
                                                    lr=0, betas=(config['beta_1'], config['beta_2']),
                                                    eps=config['epsilon'])
@@ -102,8 +103,7 @@ def main():
     for epoch in range(1, config['max_epochs'] + 1):
         # training model
         model_par.train()
-        loss_calculator = MultiGPULossCompute(
-            model.generator, criterion, devices=devices, opt=model_opt)
+        loss_calculator = MultiGPULossCompute(model.generator, criterion, devices=devices, opt=model_opt)
 
         (_, steps) = run_epoch((rebatch(pad_idx, b) for b in train_iter),
                                model_par,
@@ -116,8 +116,8 @@ def main():
 
         # calculating validation loss and bleu score
         model_par.eval()
-        loss_calculator_without_optimizer = MultiGPULossCompute(
-            model.generator, eval_criterion, devices=devices, opt=None)
+        loss_calculator_without_optimizer = MultiGPULossCompute(model.generator, eval_criterion, devices=devices,
+                                                                opt=None)
 
         (loss, _) = run_epoch((rebatch(pad_idx, b) for b in valid_iter),
                               model_par,

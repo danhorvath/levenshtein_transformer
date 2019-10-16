@@ -30,8 +30,7 @@ class MultiGPULossCompute(object):
             # Predict distributions
             out_column = [[Variable(o[:, i:i + chunk_size].data, requires_grad=self.opt is not None)] for o in
                           out_scatter]
-            gen = nn.parallel.parallel_apply(
-                generator[:len(out_column)], out_column)
+            gen = nn.parallel.parallel_apply(generator[:len(out_column)], out_column)
 
             # Compute loss.
             y = [(g.contiguous().view(-1, g.size(-1)), t[:, i:i + chunk_size].contiguous().view(-1)) for g, t in

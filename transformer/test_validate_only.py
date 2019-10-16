@@ -3,7 +3,7 @@ from torchtext import data, datasets
 
 from transformer.model import Transformer
 from transformer.data import batch_size_fn, MyIterator
-from validator import validate
+from transformer.validator import validate
 
 from transformer.config import config
 import dill

@@ -22,53 +22,33 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
         self.bos = bos
         self.unk = unk
 
-    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor,
-                tgt: Tensor):
+    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor, tgt: Tensor):
 
         assert tgt is not None, "Forward function only supports training."
 
         # encoding
         encoder_out = self.encode(src, src_mask)
-        # print('src:', src[0], src.size())
-        # print('tgt:', tgt[0], tgt.size())
-        # print('x:', x[0], x.size())
 
         # generate training labels for insertion
         # word_pred_tgt, word_pred_tgt_masks, ins_targets
         word_pred_tgt, word_pred_tgt_masks, ins_targets = _get_ins_targets(x, tgt, self.pad, self.unk)
         word_pred_tgt_subsequent_masks = BatchWithNoise.make_std_mask(word_pred_tgt, pad=self.pad)
-        # print('word_pred_tgt', word_pred_tgt[0], word_pred_tgt.size())
-        # print('word_pred_tgt_subsequent_masks', word_pred_tgt_subsequent_masks[0],
-        #       word_pred_tgt_subsequent_masks.size())
-        # print('word_pred_tgt_masks', word_pred_tgt_masks[0], word_pred_tgt_masks.size())
-        # print('ins_targets', ins_targets[0], ins_targets.size())
 
         ins_targets = ins_targets.clamp(min=0, max=255)  # for safe prediction
-        # print('clamped ins_targets', ins_targets[0], ins_targets.size())
         ins_masks = x[:, 1:].ne(self.pad)
-        # print('ins_masks', ins_masks[0], ins_masks.size())
-
         ins_out = self.decoder.forward_mask_ins(encoder_out, src_mask, self.tgt_embed(x), x_mask)
-        # print('ins_out', ins_out[0], ins_out.size())
 
         word_pred_out = self.decoder.forward_word_ins(encoder_out, src_mask, self.tgt_embed(word_pred_tgt),
                                                       word_pred_tgt_subsequent_masks)
-        # print('word_pred_out', word_pred_out[0], word_pred_out.size())
-
         # make online prediction
         word_predictions = F.log_softmax(word_pred_out, dim=-1).max(2)[1]
         word_predictions.masked_scatter_(~word_pred_tgt_masks, tgt[~word_pred_tgt_masks])
         word_predictions_subsequent_mask = BatchWithNoise.make_std_mask(word_predictions, pad=self.pad)
-        # print('word_predictions', word_predictions[0], word_predictions.size())
-        # print('word_predictions_subsequent_mask', word_predictions_subsequent_mask[0],
-        #       word_predictions_subsequent_mask.size())
 
         # generate training labels for deletion
         word_del_targets = _get_del_targets(word_predictions, tgt, self.pad)
-        # print('word_del_targets', word_del_targets[0], word_del_targets.size())
         word_del_out = self.decoder.forward_word_del(encoder_out, src_mask, self.tgt_embed(word_predictions),
                                                      word_predictions_subsequent_mask)
-        # print('word_del_out', word_del_out[0], word_del_out.size())
 
         return {
             "ins_out": ins_out,
@@ -215,3 +195,4 @@ class LevenshteinDecoder(Decoder):
         f_word_del = F.log_softmax(self.embed_word_del(features), dim=2)
         f_mask_ins = F.log_softmax(self.embed_mask_ins(features_cat), dim=2)
         return f_word_del, f_mask_ins
+

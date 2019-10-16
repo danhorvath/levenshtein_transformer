@@ -20,13 +20,8 @@ def _get_ins_targets(pred: Tensor, target: Tensor, padding_idx: int, unk_idx: in
 
     with torch.cuda.device_of(pred):
         # removing padding
-        pred_list = [
-            [t for t in s if t != padding_idx] for i, s in enumerate(pred.tolist())
-        ]
-        target_list = [
-            [t for t in s if t != padding_idx]
-            for i, s in enumerate(target.tolist())
-        ]
+        pred_list = [[t for t in s if t != padding_idx] for i, s in enumerate(pred.tolist())]
+        target_list = [[t for t in s if t != padding_idx] for i, s in enumerate(target.tolist())]
 
     full_labels = libnat.suggested_ed2_path(pred_list, target_list, padding_idx)
 

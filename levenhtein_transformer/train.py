@@ -42,12 +42,10 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
         if train:
             loss.backward()
             if optimizer_should_step:
-                opt.optimizer.step()
+                opt.step()
                 opt.optimizer.zero_grad()
 
-        # TODO set number of batches if the number of iterations in the epoch is not dividable by batch_multiplier
-
-        total_loss += loss
+        total_loss += loss.item() / batch.ntokens
         total_tokens += batch.ntokens
         tokens += batch.ntokens
 
