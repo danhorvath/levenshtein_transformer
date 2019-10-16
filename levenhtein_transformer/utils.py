@@ -23,38 +23,38 @@ def _get_ins_targets(pred: Tensor, target: Tensor, padding_idx: int, unk_idx: in
         pred_list = [[t for t in s if t != padding_idx] for i, s in enumerate(pred.tolist())]
         target_list = [[t for t in s if t != padding_idx] for i, s in enumerate(target.tolist())]
 
-    full_labels = libnat.suggested_ed2_path(pred_list, target_list, padding_idx)
+        full_labels = libnat.suggested_ed2_path(pred_list, target_list, padding_idx)
 
-    # get insertion target with number of insertions eg. [0, 2, 1, 0, 2, 0]
-    insertion_tgts = [[len(c) if c[0] != padding_idx else 0 for c in a[:-1]] for a in full_labels]
+        # get insertion target with number of insertions eg. [0, 2, 1, 0, 2, 0]
+        insertion_tgts = [[len(c) if c[0] != padding_idx else 0 for c in a[:-1]] for a in full_labels]
 
-    # generate labels
-    word_pred_tgt_masks = []
-    for insertion_tgt in insertion_tgts:
-        word_gen_mask = []
-        # get mask for word generation, eg: [0, 1, 1, 0, 1, 0, 0, 1, 1]
-        for beam_size in insertion_tgt[1:-1]:  # HACK 1:-1
-            word_gen_mask += [0] + [1 for _ in range(beam_size)]
+        # generate labels
+        word_pred_tgt_masks = []
+        for insertion_tgt in insertion_tgts:
+            word_gen_mask = []
+            # get mask for word generation, eg: [0, 1, 1, 0, 1, 0, 0, 1, 1]
+            for beam_size in insertion_tgt[1:-1]:  # HACK 1:-1
+                word_gen_mask += [0] + [1 for _ in range(beam_size)]
 
-        # add padding
-        word_pred_tgt_masks.append(word_gen_mask + [0 for _ in range(out_seq_len - len(word_gen_mask))])
+            # add padding
+            word_pred_tgt_masks.append(word_gen_mask + [0 for _ in range(out_seq_len - len(word_gen_mask))])
 
-    ins_targets = [
-        insertion_tgt[1:-1] +
-        [0 for _ in range(in_seq_len - 1 - len(insertion_tgt[1:-1]))]
-        for insertion_tgt in insertion_tgts
-    ]
+        ins_targets = [
+            insertion_tgt[1:-1] +
+            [0 for _ in range(in_seq_len - 1 - len(insertion_tgt[1:-1]))]
+            for insertion_tgt in insertion_tgts
+        ]
 
-    # transform to tensor
+        # transform to tensor
 
-    # word_pred_tgt_masks = [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, ..., 0]
-    word_pred_tgt_masks = torch.tensor(word_pred_tgt_masks, device=target.device).bool()
+        # word_pred_tgt_masks = [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, ..., 0]
+        word_pred_tgt_masks = torch.tensor(word_pred_tgt_masks, device=target.device).bool()
 
-    # ins_targets = [0, 2, 1, 0, 2, 0, 0, 0, ..., 0]
-    ins_targets = torch.tensor(ins_targets, device=pred.device)
+        # ins_targets = [0, 2, 1, 0, 2, 0, 0, 0, ..., 0]
+        ins_targets = torch.tensor(ins_targets, device=pred.device)
 
-    # word_pred_tgt = [0, <unk>, <unk>, 0, <unk>, 0, 0, <unk>, <unk>, 0, 0, ..., 0]
-    word_pred_tgt = target.masked_fill(word_pred_tgt_masks, unk_idx)
+        # word_pred_tgt = [0, <unk>, <unk>, 0, <unk>, 0, 0, <unk>, <unk>, 0, 0, ..., 0]
+        word_pred_tgt = target.masked_fill(word_pred_tgt_masks, unk_idx)
     return word_pred_tgt, word_pred_tgt_masks, ins_targets
 
 
@@ -70,19 +70,19 @@ def _get_del_targets(prediction, target, padding_idx):
             for i, s in enumerate(target.tolist())
         ]
 
-    # get labels in form of [insert1, insert2, ..., insertn, [del1, del2, ..., deln]]
-    full_labels = libnat.suggested_ed2_path(
-        prediction_list, target_list, padding_idx
-    )
+        # get labels in form of [insert1, insert2, ..., insertn, [del1, del2, ..., deln]]
+        full_labels = libnat.suggested_ed2_path(
+            prediction_list, target_list, padding_idx
+        )
 
-    word_del_targets = [b[-1] for b in full_labels]
-    word_del_targets = [
-        labels + [0 for _ in range(out_seq_len - len(labels))]
-        for labels in word_del_targets
-    ]
+        word_del_targets = [b[-1] for b in full_labels]
+        word_del_targets = [
+            labels + [0 for _ in range(out_seq_len - len(labels))]
+            for labels in word_del_targets
+        ]
 
-    # transform to tensor
-    word_del_targets = torch.tensor(word_del_targets, device=target.device)
+        # transform to tensor
+        word_del_targets = torch.tensor(word_del_targets, device=target.device)
     return word_del_targets
 
 
@@ -98,31 +98,29 @@ def _get_del_ins_targets(in_tokens, out_tokens, padding_idx):
             for i, s in enumerate(out_tokens.tolist())
         ]
 
-    full_labels = libnat.suggested_ed2_path(
-        in_tokens_list, out_tokens_list, padding_idx
-    )
+        full_labels = libnat.suggested_ed2_path(in_tokens_list, out_tokens_list, padding_idx)
 
-    # deletion target, eg: [0, 0, 1, 0, 1, 0]
-    word_del_targets = [b[-1] for b in full_labels]
-    # add padding
-    word_del_targets = [
-        labels + [0 for _ in range(out_seq_len - len(labels))]
-        for labels in word_del_targets
-    ]
+        # deletion target, eg: [0, 0, 1, 0, 1, 0]
+        word_del_targets = [b[-1] for b in full_labels]
+        # add padding
+        word_del_targets = [
+            labels + [0 for _ in range(out_seq_len - len(labels))]
+            for labels in word_del_targets
+        ]
 
-    # insertion target with number of words to be inserted, eg [0, 0, 3, 0, 2]
-    mask_inputs = [
-        [len(c) if c[0] != padding_idx else 0 for c in a[:-1]] for a in full_labels
-    ]
-    mask_ins_targets = [
-        mask_input[1:-1] +
-        [0 for _ in range(in_seq_len - 1 - len(mask_input[1:-1]))]
-        for mask_input in mask_inputs
-    ]
+        # insertion target with number of words to be inserted, eg [0, 0, 3, 0, 2]
+        mask_inputs = [
+            [len(c) if c[0] != padding_idx else 0 for c in a[:-1]] for a in full_labels
+        ]
+        mask_ins_targets = [
+            mask_input[1:-1] +
+            [0 for _ in range(in_seq_len - 1 - len(mask_input[1:-1]))]
+            for mask_input in mask_inputs
+        ]
 
-    # transform to tensor
-    mask_ins_targets = torch.tensor(mask_ins_targets, device=in_tokens.device)
-    word_del_targets = torch.tensor(word_del_targets, device=out_tokens.device)
+        # transform to tensor
+        mask_ins_targets = torch.tensor(mask_ins_targets, device=in_tokens.device)
+        word_del_targets = torch.tensor(word_del_targets, device=out_tokens.device)
     return word_del_targets, mask_ins_targets
 
 

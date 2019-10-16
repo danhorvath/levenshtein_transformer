@@ -20,7 +20,7 @@ def LevenshteinTransformerModel(src_vocab, tgt_vocab, PAD, BOS, EOS, UNK, criter
         nn.Sequential(Embeddings(d_model, tgt_vocab), deepcopy(position)),
         Generator(d_model, tgt_vocab),
         pad=PAD, bos=BOS, eos=EOS, unk=UNK,
-        criterion = criterion
+        criterion=criterion
     )
     # This was important from their code.
     # Initialize parameters with Glorot / fan_avg.

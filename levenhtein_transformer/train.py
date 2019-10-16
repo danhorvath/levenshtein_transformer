@@ -1,10 +1,10 @@
 import time
 import wandb
-from levenhtein_transformer.model import LevenshteinTransformerModel
+from levenhtein_transformer.layers import LevenshteinEncodeDecoder
 from levenhtein_transformer.config import config
 
 
-def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, steps_so_far, batch_multiplier=1,
+def run_epoch(data_iter, model: LevenshteinEncodeDecoder, opt, steps_so_far, batch_multiplier=1,
               logging=False, train=False):
     """
     Standard Training and Logging Function
@@ -17,8 +17,6 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
 
     for i, batch in enumerate(data_iter):
         effective_step = i / batch_multiplier
-        print(i)
-        print(effective_step, effective_step.is_integer())
 
         # update the model on steps defined by batch_multiplier or the last step in the epoch
         optimizer_should_step = effective_step.is_integer()
@@ -26,23 +24,11 @@ def run_epoch(data_iter, model: LevenshteinTransformerModel, criterion, opt, ste
 
         out = model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
 
-        ins_out = out["ins_out"]
-        ins_tgt = out["ins_tgt"]
-        ins_mask = out["ins_mask"]
-        ins_loss = out['ins_loss'].sum().item() / batch.ntokens
+        ins_loss = out['ins_loss'].sum().item()
+        word_pred_loss = out['word_pred_loss'].sum().item()
+        word_del_loss = out['word_del_loss'].sum().item()
 
-        word_pred_out = out["word_pred_out"]
-        word_pred_tgt = out["word_pred_tgt"]
-        word_pred_mask = out["word_pred_mask"]
-        word_pred_loss = out['word_pred_loss'].sum().item()  / batch.ntokens
-        # print(batch.trg.shape, word_pred_out.shape, word_pred_tgt.shape)
-
-        word_del_out = out["word_del_out"]
-        word_del_tgt = out["word_del_tgt"]
-        word_del_mask = out["word_del_mask"]
-        word_del_loss = out['word_del_loss'].sum().item()  / batch.ntokens
-
-        loss = out['loss'].sum() / batch.ntokens
+        loss = out['loss'].sum()
         if train:
             loss.backward()
             if optimizer_should_step:
