@@ -52,9 +52,11 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
                                                      word_predictions_subsequent_mask)
         word_del_mask = word_predictions.ne(self.pad)
 
-        ins_loss = self.criterion(outputs=ins_out, targets=ins_targets, masks=ins_masks)
-        word_pred_loss = self.criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_tgt_masks)
-        word_del_loss = self.criterion(outputs=word_del_out, targets=word_del_targets, masks=word_del_mask)
+        ins_loss = self.criterion(outputs=ins_out, targets=ins_targets, masks=ins_masks, label_smoothing=0.0)
+        word_pred_loss = self.criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_tgt_masks,
+                                        label_smoothing=0.1)
+        word_del_loss = self.criterion(outputs=word_del_out, targets=word_del_targets,
+                                       masks=word_del_mask, label_smoothing=0.01)
 
         return {
             "ins_out": ins_out,
@@ -161,7 +163,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
 
 class LevenshteinDecoder(Decoder):
-    def __init__(self, layer, n, output_embed_dim, tgt_vocab, dropout=0.0):
+    def __init__(self, layer, n, output_embed_dim, tgt_vocab):
         super(LevenshteinDecoder, self).__init__(layer, n)
 
         # embeds the number of tokens to be inserted, max 256
@@ -171,10 +173,7 @@ class LevenshteinDecoder(Decoder):
         # embeds either 0 or 1
         self.embed_word_del = nn.Linear(output_embed_dim, 2)
 
-        self.dropout = nn.Dropout(p=dropout)
-
     def extract_features(self, x, encoder_out, encoder_out_mask, x_mask):
-        x = self.dropout(x)
         return self.forward(x, encoder_out, encoder_out_mask, x_mask)
 
     def forward_mask_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
@@ -207,26 +206,26 @@ class LevenshteinDecoder(Decoder):
         return f_word_del, f_mask_ins
 
     #################
-
-    def forward_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return features
-
-    def forward_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        # creates pairs of consecutive words, so if the words are marked by their indices (0, 1, ... n):
-        # [
-        #   [0, 1],
-        #   [1, 2],
-        #   ...
-        #   [n-1, n],
-        # ]
-
-        features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-        return features_cat
-
-    def forward_word_pred(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return features
+    #
+    # def forward_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
+    #     return features
+    #
+    # def forward_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
+    #     # creates pairs of consecutive words, so if the words are marked by their indices (0, 1, ... n):
+    #     # [
+    #     #   [0, 1],
+    #     #   [1, 2],
+    #     #   ...
+    #     #   [n-1, n],
+    #     # ]
+    #
+    #     features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
+    #     return features_cat
+    #
+    # def forward_word_pred(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
+    #     return features
 
     #################

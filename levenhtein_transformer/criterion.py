@@ -4,16 +4,15 @@ import torch.nn.functional as F
 
 
 class LabelSmoothingLoss(nn.Module):
-    def __init__(self, label_smoothing=0.0, factor=1.0, batch_multiplier=1.):
+    def __init__(self, factor=1.0, batch_multiplier=1.):
         super(LabelSmoothingLoss, self).__init__()
-        self.label_smoothing = label_smoothing
         self.factor = factor
         self.batch_multiplier = batch_multiplier
 
     def mean_ds(self, x: torch.Tensor, dim=None) -> torch.Tensor:
         return x.float().mean().type_as(x) if dim is None else x.float().mean(dim).type_as(x)
 
-    def forward(self, outputs: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor = None):
+    def forward(self, outputs: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor = None, label_smoothing=0.0):
         if masks is not None:
             outputs = outputs[masks]
             targets = targets[masks]
@@ -27,8 +26,8 @@ class LabelSmoothingLoss(nn.Module):
             losses = losses.float().sum(-1).type_as(losses)
 
         nll_loss = self.mean_ds(losses)
-        if self.label_smoothing > 0:
-            loss = nll_loss * (1 - self.label_smoothing) - self.mean_ds(logits) * self.label_smoothing
+        if label_smoothing > 0:
+            loss = nll_loss * (1 - label_smoothing) - self.mean_ds(logits) * label_smoothing
         else:
             loss = nll_loss
 
