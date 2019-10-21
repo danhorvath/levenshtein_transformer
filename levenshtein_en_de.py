@@ -35,8 +35,8 @@ def main():
                      eos_token=EOS_WORD, pad_token=BLANK_WORD)
 
     train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
-                                             # train='train.tok.clean.bpe.32000',
-                                             train='newstest2014.tok.bpe.32000',
+                                             train='train.tok.clean.bpe.32000',
+                                            #  train='newstest2014.tok.bpe.32000',
                                              validation='newstest2013.tok.bpe.32000',
                                              test='newstest2014.tok.bpe.32000',
                                              fields=(SRC, TGT),
@@ -72,21 +72,21 @@ def main():
     criterion = LabelSmoothingLoss(label_smoothing=0.1, batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
-                                        BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
-                                        criterion=criterion,
-                                        d_model=256, d_ff=256, h=1,
-                                        dropout=config['dropout'], decoder_dropout=config['decoder_dropout'])
+    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
+    #                                     BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
+    #                                     criterion=criterion,
+    #                                     d_model=256, d_ff=256, h=1,
+    #                                     dropout=config['dropout'], decoder_dropout=config['decoder_dropout'])
 
-    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
-    #                                     n=config['num_layers'],
-    #                                     h=config['attn_heads'],
-    #                                     d_model=config['model_dim'],
-    #                                     dropout=config['dropout'],
-    #                                     decoder_dropout=config['decoder_dropout'],
-    #                                     d_ff=config['ff_dim'],
-    #                                     PAD=pad_idx,
-    #                                     BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
+    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
+                                        n=config['num_layers'],
+                                        h=config['attn_heads'],
+                                        d_model=config['model_dim'],
+                                        dropout=config['dropout'],
+                                        decoder_dropout=config['decoder_dropout'],
+                                        d_ff=config['ff_dim'],
+                                        criterion=criterion,
+                                        PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
 
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight

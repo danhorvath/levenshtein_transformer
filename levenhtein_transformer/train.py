@@ -42,19 +42,19 @@ def run_epoch(data_iter, model: LevenshteinEncodeDecoder, opt, steps_so_far, bat
         if logging and optimizer_should_step:
             elapsed = time.time() - start
             wandb.log({'Step': steps_so_far + effective_step,
-                       'Loss': loss * batch_multiplier / batch.ntokens,
-                       'Insertion loss': ins_loss * batch_multiplier / batch.ntokens,
-                       'Word prediction loss': word_pred_loss * batch_multiplier / batch.ntokens,
-                       'Deletion loss': word_del_loss * batch_multiplier / batch.ntokens,
+                       'Loss': loss,
+                       'Insertion loss': ins_loss,
+                       'Word prediction loss': word_pred_loss,
+                       'Deletion loss': word_del_loss,
                        'Tokens per sec': tokens / elapsed,
                        'Learning rate': opt._rate,
                        'Batch length': current_batch_size,
                        'Effective batch length': current_batch_size * config['batch_multiplier']})
-            if effective_step % 100 == 1 or True:
-                print(f"Step: {steps_so_far + effective_step} | Loss: {loss * batch_multiplier / batch.ntokens} | " +
-                      f"Insertion loss: {ins_loss * batch_multiplier / batch.ntokens} | " +
-                      f"Word prediction loss: {word_pred_loss * batch_multiplier / batch.ntokens} | " +
-                      f"Deletion loss: {word_del_loss * batch_multiplier / batch.ntokens} | " +
+            if effective_step % 100 == 1:
+                print(f"Step: {steps_so_far + effective_step} | Loss: {loss} | " +
+                      f"Insertion loss: {ins_loss} | " +
+                      f"Word prediction loss: {word_pred_loss} | " +
+                      f"Deletion loss: {word_del_loss} | " +
                       f"Tokens per Sec: {tokens / elapsed} | Learning rate: {opt._rate} | " +
                       f"Batch length: {current_batch_size}")
             start = time.time()
