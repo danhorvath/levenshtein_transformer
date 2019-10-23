@@ -15,14 +15,15 @@ from levenhtein_transformer.data import BatchWithNoise
 
 
 class LevenshteinEncodeDecoder(EncoderDecoder):
-    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator, pad, bos, eos, unk):
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator, pad, bos, eos, unk, criterion):
         super(LevenshteinEncodeDecoder, self).__init__(encoder, decoder, src_embed, tgt_embed, generator)
         self.pad = pad
         self.eos = eos
         self.bos = bos
         self.unk = unk
+        self.criterion = criterion
 
-    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor, tgt: Tensor, criterion):
+    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor, tgt: Tensor):
 
         assert tgt is not None, "Forward function only supports training."
 
@@ -51,23 +52,25 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
                                                      word_predictions_subsequent_mask)
         word_del_mask = word_predictions.ne(self.pad)
 
-        ins_loss = criterion(outputs=ins_out, targets=ins_targets, masks=ins_masks)
-        word_pred_loss = criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_tgt_masks)
-        word_del_loss = criterion(outputs=word_del_out, targets=word_del_targets, masks=word_del_mask)
+        ins_loss = self.criterion(outputs=ins_out, targets=ins_targets, masks=ins_masks, label_smoothing=0.0)
+        word_pred_loss = self.criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_tgt_masks,
+                                        label_smoothing=0.1)
+        word_del_loss = self.criterion(outputs=word_del_out, targets=word_del_targets,
+                                       masks=word_del_mask, label_smoothing=0.01)
 
         return {
             "ins_out": ins_out,
             "ins_tgt": ins_targets,
             "ins_mask": ins_masks,
-            "ins_loss": ins_loss.item(),
+            "ins_loss": ins_loss,
             "word_pred_out": word_pred_out,
             "word_pred_tgt": tgt,
             "word_pred_mask": word_pred_tgt_masks,
-            "word_pred_loss": word_pred_loss.item(),
+            "word_pred_loss": word_pred_loss,
             "word_del_out": word_del_out,
             "word_del_tgt": word_del_targets,
             "word_del_mask": word_del_mask,
-            "word_del_loss": word_del_loss.item(),
+            "word_del_loss": word_del_loss,
             "loss": ins_loss + word_pred_loss + word_del_loss
         }
 
@@ -160,7 +163,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
 
 class LevenshteinDecoder(Decoder):
-    def __init__(self, layer, n, output_embed_dim, tgt_vocab, dropout=0.0):
+    def __init__(self, layer, n, output_embed_dim, tgt_vocab):
         super(LevenshteinDecoder, self).__init__(layer, n)
 
         # embeds the number of tokens to be inserted, max 256
@@ -170,10 +173,7 @@ class LevenshteinDecoder(Decoder):
         # embeds either 0 or 1
         self.embed_word_del = nn.Linear(output_embed_dim, 2)
 
-        self.dropout = nn.Dropout(p=dropout)
-
     def extract_features(self, x, encoder_out, encoder_out_mask, x_mask):
-        x = self.dropout(x)
         return self.forward(x, encoder_out, encoder_out_mask, x_mask)
 
     def forward_mask_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
@@ -206,26 +206,26 @@ class LevenshteinDecoder(Decoder):
         return f_word_del, f_mask_ins
 
     #################
-
-    def forward_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return features
-
-    def forward_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        # creates pairs of consecutive words, so if the words are marked by their indices (0, 1, ... n):
-        # [
-        #   [0, 1],
-        #   [1, 2],
-        #   ...
-        #   [n-1, n],
-        # ]
-
-        features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-        return features_cat
-
-    def forward_word_pred(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return features
+    #
+    # def forward_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
+    #     return features
+    #
+    # def forward_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
+    #     # creates pairs of consecutive words, so if the words are marked by their indices (0, 1, ... n):
+    #     # [
+    #     #   [0, 1],
+    #     #   [1, 2],
+    #     #   ...
+    #     #   [n-1, n],
+    #     # ]
+    #
+    #     features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
+    #     return features_cat
+    #
+    # def forward_word_pred(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
+    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
+    #     return features
 
     #################
