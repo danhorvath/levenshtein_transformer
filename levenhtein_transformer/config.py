@@ -1,7 +1,7 @@
 from torch.cuda import device_count
 
 BATCH_MULTIPLIER = 1.
-SINGLE_GPU_BATCH_SIZE = 8000
+SINGLE_GPU_BATCH_SIZE = 7000
 BATCH_SIZE = SINGLE_GPU_BATCH_SIZE * device_count()
 
 config = {'max_epochs': 100,  # max_step will terminate the training
