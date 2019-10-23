@@ -192,7 +192,7 @@ class Embeddings(nn.Module):
         super(Embeddings, self).__init__()
         self.lookup_table = nn.Embedding(vocab, d_model)
         self.d_model = d_model
-        self.weight = nn.Parameter(torch.Tensor(vocab, d_model))
+        self.sqrt_d_model = math.sqrt(self.d_model)
 
     def forward(self, x: Tensor):
-        return self.lookup_table(x) * math.sqrt(self.d_model)
+        return self.lookup_table(x) * self.sqrt_d_model

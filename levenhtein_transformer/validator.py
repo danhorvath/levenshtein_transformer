@@ -7,7 +7,7 @@ from levenhtein_transformer.utils import initialize_output_tokens
 from utils import vector_to_sentence
 
 
-def validate(model, iterator, SRC, TGT, EOS_WORD, eos, bos, max_decode_iter=10, logging=False):
+def validate(model, iterator, SRC, TGT, EOS_WORD, eos, bos, max_decode_iter=10, logging=False, is_test=False):
     model.eval()
     print('Validating...')
     # TODO: parallel Bleu calculation
@@ -17,6 +17,8 @@ def validate(model, iterator, SRC, TGT, EOS_WORD, eos, bos, max_decode_iter=10, 
 
     hypotheses = []
     references = []
+
+    table = wandb.Table(columns=["Text", "Predicted Label", "True Label"])
 
     for i, batch in enumerate(iterator):
         src = batch.src
@@ -47,6 +49,7 @@ def validate(model, iterator, SRC, TGT, EOS_WORD, eos, bos, max_decode_iter=10, 
         references += tgt_sentences
 
         # sentence_pairs = list(zip(tgt_sentences, out_sentences))
+        table.add_data(src_sentences[0], tgt_sentences[0], out_sentences[0])
         if logging:
             print(f"Source: {src_sentences[0]}\nTarget: {tgt_sentences[0]}\nPrediction: {out_sentences[0]}\n")
 
@@ -65,5 +68,6 @@ def validate(model, iterator, SRC, TGT, EOS_WORD, eos, bos, max_decode_iter=10, 
     # sacrebleu_score = np.array(batch_sacrebleus).mean()
     corpus_sacrebleu_score = corpus_bleu(hypotheses, [references])
     corpus_bleu_score = nltk_corpus_bleu(references_tokenized, hypotheses_tokenized)
+    wandb.log({"Test samples" if is_test else "Validation samples": table})
     print(f'Corpus bleu: {corpus_bleu_score * 100} | Corpus sacrebleu: {corpus_sacrebleu_score.score}')
     return corpus_sacrebleu_score.score

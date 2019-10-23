@@ -34,7 +34,7 @@ def save_model(model, optimizer, loss, src_field, tgt_field, updates, epoch, pre
     }, file_name)
     torch.save(src_field, f'SRC_{len(src_field.vocab.itos)}.pt', pickle_module=dill)
     torch.save(tgt_field, f'TGT_{len(tgt_field.vocab.itos)}.pt', pickle_module=dill)
-    print('Model is saved as {file_name}')
+    print(f'Model is saved as {file_name}')
 
 
 def bpe_to_words(sentence):

@@ -25,6 +25,8 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
     def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor, tgt: Tensor):
 
+        # TODO: CHECK OUTPUTS OF ALL TGT-PRED PAIRS!!!
+
         assert tgt is not None, "Forward function only supports training."
 
         # encoding
@@ -32,14 +34,14 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
         # generate training labels for insertion
         # word_pred_tgt, word_pred_tgt_masks, ins_targets
-        word_pred_tgt, word_pred_tgt_masks, ins_targets = _get_ins_targets(x, tgt, self.pad, self.unk)
-        word_pred_tgt_subsequent_masks = BatchWithNoise.make_std_mask(word_pred_tgt, pad=self.pad)
+        word_pred_input, word_pred_tgt_masks, ins_targets = _get_ins_targets(x, tgt, self.pad, self.unk)
+        word_pred_tgt_subsequent_masks = BatchWithNoise.make_std_mask(word_pred_input, pad=self.pad)
 
         ins_targets = ins_targets.clamp(min=0, max=255)  # for safe prediction
         ins_masks = x[:, 1:].ne(self.pad)
         ins_out = self.decoder.forward_mask_ins(encoder_out, src_mask, self.tgt_embed(x), x_mask)
 
-        word_pred_out = self.decoder.forward_word_ins(encoder_out, src_mask, self.tgt_embed(word_pred_tgt),
+        word_pred_out = self.decoder.forward_word_ins(encoder_out, src_mask, self.tgt_embed(word_pred_input),
                                                       word_pred_tgt_subsequent_masks)
         # make online prediction
         word_predictions = F.log_softmax(word_pred_out, dim=-1).max(2)[1]
@@ -53,7 +55,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
         word_del_mask = word_predictions.ne(self.pad)
 
         ins_loss = self.criterion(outputs=ins_out, targets=ins_targets, masks=ins_masks, label_smoothing=0.0)
-        word_pred_loss = self.criterion(outputs=word_pred_out, targets=word_pred_tgt, masks=word_pred_tgt_masks,
+        word_pred_loss = self.criterion(outputs=word_pred_out, targets=tgt, masks=word_pred_tgt_masks,
                                         label_smoothing=0.1)
         word_del_loss = self.criterion(outputs=word_del_out, targets=word_del_targets,
                                        masks=word_del_mask, label_smoothing=0.01)
@@ -167,11 +169,14 @@ class LevenshteinDecoder(Decoder):
         super(LevenshteinDecoder, self).__init__(layer, n)
 
         # embeds the number of tokens to be inserted, max 256
-        self.embed_mask_ins = nn.Linear(output_embed_dim * 2, 256)
+        self.embed_mask_ins = Embedding(256, output_embed_dim * 2, None)
+
         # embeds the number of tokens to be inserted, max 256
-        self.embed_word_pred = nn.Linear(output_embed_dim, tgt_vocab)
+        self.embed_word_pred = nn.Parameter(torch.Tensor(tgt_vocab, output_embed_dim))
+        nn.init.normal_(self.embed_word_pred, mean=0, std=output_embed_dim ** -0.5)
+
         # embeds either 0 or 1
-        self.embed_word_del = nn.Linear(output_embed_dim, 2)
+        self.embed_word_del = Embedding(2, output_embed_dim, None)
 
     def extract_features(self, x, encoder_out, encoder_out_mask, x_mask):
         return self.forward(x, encoder_out, encoder_out_mask, x_mask)
@@ -187,15 +192,15 @@ class LevenshteinDecoder(Decoder):
         # ]
 
         features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-        return self.embed_mask_ins(features_cat)
+        return F.linear(features_cat, self.embed_mask_ins.weight)
 
     def forward_word_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return self.embed_word_pred(features)
+        return F.linear(features, self.embed_word_pred)
 
     def forward_word_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return self.embed_word_del(features)
+        return F.linear(features, self.embed_word_del.weight)
 
     def forward_word_del_mask_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         # merge the word-deletion and mask insertion into one operation,
@@ -229,3 +234,10 @@ class LevenshteinDecoder(Decoder):
     #     return features
 
     #################
+
+
+def Embedding(num_embeddings, embedding_dim, padding_idx):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
+    nn.init.constant_(m.weight[padding_idx], 0)
+    return m

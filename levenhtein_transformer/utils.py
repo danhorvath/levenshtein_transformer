@@ -13,7 +13,7 @@ def _get_ins_targets(pred: Tensor, target: Tensor, padding_idx: int, unk_idx: in
     :param target: Tensor
     :param padding_idx: long
     :param unk_idx: long
-    :return: word_pred_tgt, word_pred_tgt_masks, ins_targets
+    :return: word_pred_input, word_pred_tgt_masks, ins_targets
     """
     in_seq_len = pred.size(1)
     out_seq_len = target.size(1)
@@ -54,8 +54,8 @@ def _get_ins_targets(pred: Tensor, target: Tensor, padding_idx: int, unk_idx: in
         ins_targets = torch.tensor(ins_targets, device=pred.device)
 
         # word_pred_tgt = [0, <unk>, <unk>, 0, <unk>, 0, 0, <unk>, <unk>, 0, 0, ..., 0]
-        word_pred_tgt = target.masked_fill(word_pred_tgt_masks, unk_idx)
-    return word_pred_tgt, word_pred_tgt_masks, ins_targets
+        word_pred_input = target.masked_fill(word_pred_tgt_masks, unk_idx)
+    return word_pred_input, word_pred_tgt_masks, ins_targets
 
 
 def _get_del_targets(prediction, target, padding_idx):

@@ -35,8 +35,8 @@ def main():
                      eos_token=EOS_WORD, pad_token=BLANK_WORD)
 
     train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
-                                             train='train.tok.clean.bpe.32000',
-                                             #  train='newstest2014.tok.bpe.32000',
+                                             # train='train.tok.clean.bpe.32000',
+                                             train='newstest2014.tok.bpe.32000',
                                              validation='newstest2013.tok.bpe.32000',
                                              test='newstest2014.tok.bpe.32000',
                                              fields=(SRC, TGT),
@@ -72,20 +72,20 @@ def main():
     criterion = LabelSmoothingLoss(batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
-    #                                     BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
-    #                                     criterion=criterion,
-    #                                     d_model=256, d_ff=256, h=1,
-    #                                     dropout=config['dropout'])
-
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
-                                        n=config['num_layers'],
-                                        h=config['attn_heads'],
-                                        d_model=config['model_dim'],
-                                        dropout=config['dropout'],
-                                        d_ff=config['ff_dim'],
+    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
+                                        BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
                                         criterion=criterion,
-                                        PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
+                                        d_model=256, d_ff=256, h=1,
+                                        dropout=config['dropout'])
+
+    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
+    #                                     n=config['num_layers'],
+    #                                     h=config['attn_heads'],
+    #                                     d_model=config['model_dim'],
+    #                                     dropout=config['dropout'],
+    #                                     d_ff=config['ff_dim'],
+    #                                     criterion=criterion,
+    #                                     PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
 
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
@@ -118,41 +118,39 @@ def main():
     wandb.watch(model)
 
     current_steps = 0
-    for epoch in range(1, config['max_epochs'] + 1):
+    epoch = 0
+    while True:
         # training model
+        print('Epoch ', epoch)
         model_par.train()
 
-        (loss, steps) = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
-                               model=model_par,
-                               opt=model_opt,
-                               steps_so_far=current_steps,
-                               batch_multiplier=config['batch_multiplier'],
-                               logging=True,
-                               train=True)
+        loss, steps = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
+                                model=model_par,
+                                opt=model_opt,
+                                steps_so_far=current_steps,
+                                batch_multiplier=config['batch_multiplier'],
+                                logging=True,
+                                train=True)
 
         current_steps += steps
-
-        # calculating validation loss and bleu score
+        # calculating validation bleu score
         model_par.eval()
-
         bleu = validate(model=model_par,
-                            iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
-                            SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
-                            max_decode_iter=config['max_decode_iter'], logging=False)
+                        iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
+                        SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
+                        max_decode_iter=config['max_decode_iter'], logging=True)
         wandb.log({'Epoch bleu score': bleu})
         if epoch > 2:
-            save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
-                       epoch=epoch, prefix='lev_t')
+            save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
+                       updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
         if current_steps > config['max_step']:
             break
-
-    save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
-               epoch=epoch, prefix='lev_t_final')
+        epoch +=1
 
     test_bleu = validate(model=model_par,
                          iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in test_iter),
                          SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
-                         max_decode_iter=config['max_decode_iter'], logging=True)
+                         max_decode_iter=config['max_decode_iter'], logging=True, is_test=True)
     print(f"Test Bleu score: {test_bleu}")
     wandb.config.update({'Test bleu score': test_bleu})
 
