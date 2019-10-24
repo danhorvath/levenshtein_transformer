@@ -173,7 +173,7 @@ class LevenshteinDecoder(Decoder):
 
         # embeds the number of tokens to be inserted, max 256
         self.embed_word_pred = nn.Parameter(torch.Tensor(tgt_vocab, output_embed_dim))
-        nn.init.normal_(self.embed_word_pred, mean=0, std=output_embed_dim ** -0.5)
+        self.sqrt_d_model = output_embed_dim ** -0.5
 
         # embeds either 0 or 1
         self.embed_word_del = Embedding(2, output_embed_dim, None)
@@ -192,52 +192,18 @@ class LevenshteinDecoder(Decoder):
         # ]
 
         features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-        return F.linear(features_cat, self.embed_mask_ins.weight)
+        return F.linear(features_cat, self.embed_mask_ins.weight) * self.sqrt_d_model
 
     def forward_word_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return F.linear(features, self.embed_word_pred)
+        return F.linear(features, self.embed_word_pred) * self.sqrt_d_model
 
     def forward_word_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return F.linear(features, self.embed_word_del.weight)
-
-    def forward_word_del_mask_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-        # merge the word-deletion and mask insertion into one operation,
-        features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-        f_word_del = F.log_softmax(self.embed_word_del(features), dim=2)
-        f_mask_ins = F.log_softmax(self.embed_mask_ins(features_cat), dim=2)
-        return f_word_del, f_mask_ins
-
-    #################
-    #
-    # def forward_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-    #     return features
-    #
-    # def forward_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-    #     # creates pairs of consecutive words, so if the words are marked by their indices (0, 1, ... n):
-    #     # [
-    #     #   [0, 1],
-    #     #   [1, 2],
-    #     #   ...
-    #     #   [n-1, n],
-    #     # ]
-    #
-    #     features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-    #     return features_cat
-    #
-    # def forward_word_pred(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
-    #     features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-    #     return features
-
-    #################
+        return F.linear(features, self.embed_word_del.weight) * self.sqrt_d_model
 
 
 def Embedding(num_embeddings, embedding_dim, padding_idx):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     nn.init.constant_(m.weight[padding_idx], 0)
     return m
