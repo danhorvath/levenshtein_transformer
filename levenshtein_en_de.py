@@ -76,13 +76,15 @@ def main():
                                         BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
                                         criterion=criterion,
                                         d_model=256, d_ff=256, h=1,
-                                        dropout=config['dropout'])
+                                        dropout=config['dropout'],
+                                        input_dropout=config['input_dropout'])
 
     # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
     #                                     n=config['num_layers'],
     #                                     h=config['attn_heads'],
     #                                     d_model=config['model_dim'],
-    #                                     dropout=config['dropout'],
+    #                                     dropout=config['dropout'],,
+    #                                     input_dropout=config['input_dropout']
     #                                     d_ff=config['ff_dim'],
     #                                     criterion=criterion,
     #                                     PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)

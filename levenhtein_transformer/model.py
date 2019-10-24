@@ -7,10 +7,10 @@ from levenhtein_transformer.layers import LevenshteinEncodeDecoder, LevenshteinD
 
 
 def LevenshteinTransformerModel(src_vocab, tgt_vocab, PAD, BOS, EOS, UNK, criterion, d_model=512, n=6, h=8, d_ff=2048,
-                                dropout=0.1):
+                                dropout=0.0, input_dropout=0.1):
     attn = MultiHeadedAttention(h, d_model)
     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-    position = PositionalEncoding(d_model, dropout)
+    position = PositionalEncoding(d_model, input_dropout)
     model = LevenshteinEncodeDecoder(
         Encoder(EncoderLayer(d_model, deepcopy(attn), deepcopy(ff), dropout), n),
         LevenshteinDecoder(DecoderLayer(d_model, deepcopy(attn), deepcopy(attn), deepcopy(ff), dropout),
