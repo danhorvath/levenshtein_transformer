@@ -142,9 +142,9 @@ def main():
                         SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
                         max_decode_iter=config['max_decode_iter'], logging=True)
         wandb.log({'Epoch bleu score': bleu})
-        if epoch > 2:
-            save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
-                       updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
+
+        save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
+                    updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
         if current_steps > config['max_step']:
             break
         epoch +=1
