@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
+import numpy as np
 from torchtext import data, datasets
 
 from transformer.optimizer import NoamOpt
 from levenhtein_transformer.train import run_epoch
 from levenhtein_transformer.criterion import LabelSmoothingLoss
 from levenhtein_transformer.model import LevenshteinTransformerModel
-from levenhtein_transformer.data import rebatch_and_noise, batch_size_fn, MyIterator
+from levenhtein_transformer.data import rebatch_and_noise, batch_size_fn, MyIterator, BatchWithNoise
 from levenhtein_transformer.validator import validate
 from utils import save_model
 
@@ -30,49 +31,55 @@ def main():
     def tokenize_bpe(text):
         return text.split()
 
-    SRC = data.Field(tokenize=tokenize_bpe, pad_token=BLANK_WORD, unk_token=UNK)
-    TGT = data.Field(tokenize=tokenize_bpe, init_token=BOS_WORD, unk_token=UNK,
-                     eos_token=EOS_WORD, pad_token=BLANK_WORD)
-
-    train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
-                                             # train='train.tok.clean.bpe.32000',
-                                             train='newstest2014.tok.bpe.32000',
-                                             validation='newstest2013.tok.bpe.32000',
-                                             test='newstest2014.tok.bpe.32000',
-                                             fields=(SRC, TGT),
-                                             filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
-                                                                   len(vars(x)['trg']) <= config['max_len'],
-                                             root='./.data/')
-    print('Train set length: ', len(train))
+    # SRC = data.Field(tokenize=tokenize_bpe, pad_token=BLANK_WORD, unk_token=UNK)
+    # TGT = data.Field(tokenize=tokenize_bpe, init_token=BOS_WORD, unk_token=UNK,
+    #                  eos_token=EOS_WORD, pad_token=BLANK_WORD)
+    #
+    # train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
+    #                                          # train='train.tok.clean.bpe.32000',
+    #                                          train='newstest2014.tok.bpe.32000',
+    #                                          validation='newstest2013.tok.bpe.32000',
+    #                                          test='newstest2014.tok.bpe.32000',
+    #                                          fields=(SRC, TGT),
+    #                                          filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
+    #                                                                len(vars(x)['trg']) <= config['max_len'],
+    #                                          root='./.data/')
+    # print('Train set length: ', len(train))
 
     # building shared vocabulary
-    TGT.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
-    SRC.vocab = TGT.vocab
+    # TGT.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
+    # SRC.vocab = TGT.vocab
 
-    print('Source vocab length: ', len(SRC.vocab.itos))
-    print('Target vocab length: ', len(TGT.vocab.itos))
-    wandb.config.update({'src_vocab_length': len(SRC.vocab),
-                         'target_vocab_length': len(TGT.vocab)})
+    # print('Source vocab length: ', len(SRC.vocab.itos))
+    # print('Target vocab length: ', len(TGT.vocab.itos))
+    # wandb.config.update({'src_vocab_length': len(SRC.vocab),
+    #                      'target_vocab_length': len(TGT.vocab)})
 
-    pad_idx = TGT.vocab.stoi[BLANK_WORD]
-    bos_idx = TGT.vocab.stoi[BOS_WORD]
-    eos_idx = TGT.vocab.stoi[EOS_WORD]
-    unk_idx = TGT.vocab.stoi[UNK]
-    print(f'Indexes -- PAD: {pad_idx}, EOS: {eos_idx}, BOS: {bos_idx}, UNK: {unk_idx}')
+    # pad_idx = TGT.vocab.stoi[BLANK_WORD]
+    # bos_idx = TGT.vocab.stoi[BOS_WORD]
+    # eos_idx = TGT.vocab.stoi[EOS_WORD]
+    # unk_idx = TGT.vocab.stoi[UNK]
+    # print(f'Indexes -- PAD: {pad_idx}, EOS: {eos_idx}, BOS: {bos_idx}, UNK: {unk_idx}')
 
-    train_iter = MyIterator(train, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
-                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
+    # train_iter = MyIterator(train, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
+    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
+    #
+    # valid_iter = MyIterator(val, batch_size=config['val_batch_size'], device=torch.device(0), repeat=False,
+    #                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
+    #
+    # test_iter = MyIterator(test, batch_size=config['val_batch_size'], device=torch.device(0), repeat=False,
+    #                        sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
-    valid_iter = MyIterator(val, batch_size=config['val_batch_size'], device=torch.device(0), repeat=False,
-                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
-
-    test_iter = MyIterator(test, batch_size=config['val_batch_size'], device=torch.device(0), repeat=False,
-                           sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
+    V = 15
+    pad_idx = 1
+    bos_idx = 2
+    eos_idx = 3
+    unk_idx = 0
 
     criterion = LabelSmoothingLoss(batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
+    model = LevenshteinTransformerModel(V, V, n=1, PAD=pad_idx,
                                         BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
                                         criterion=criterion,
                                         d_model=256, d_ff=256, h=1,
@@ -120,6 +127,17 @@ def main():
 
     wandb.watch(model)
 
+    def data_gen(V, batch_size, nbatches):
+        "Generate random data for a src-tgt copy task."
+        for i in range(nbatches):
+            data = torch.from_numpy(np.random.randint(4, V - 1, size=(batch_size, 10)))
+            data[:, 0] = bos_idx
+            data[:, -1] = eos_idx
+            src = torch.tensor(data, dtype=torch.long, requires_grad=False).cuda()
+            tgt = torch.tensor(data, dtype=torch.long, requires_grad=False).cuda()
+            batch = BatchWithNoise(src=src, trg=tgt, pad=pad_idx, bos=bos_idx, eos=eos_idx)
+            yield batch
+
     current_steps = 0
     epoch = 0
     while True:
@@ -127,7 +145,7 @@ def main():
         print('Epoch ', epoch)
         model_par.train()
 
-        loss, steps = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
+        loss, steps = run_epoch(data_gen(V, 30, 20),
                                 model=model_par,
                                 opt=model_opt,
                                 steps_so_far=current_steps,
@@ -137,26 +155,27 @@ def main():
 
         current_steps += steps
 
-        save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
-                    updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
+        # save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
+        #             updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
 
         # calculating validation bleu score
-        model_par.eval()
-        bleu = validate(model=model_par,
-                        iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
-                        SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
-                        max_decode_iter=config['max_decode_iter'], logging=True)
-        wandb.log({'Epoch bleu score': bleu})
+        if epoch > 10:
+            model_par.eval()
+            bleu = validate(model=model_par,
+                            iterator=data_gen(V, 10, 1),
+                            bos=bos_idx, eos=eos_idx,
+                            max_decode_iter=10, logging=True)
+        # wandb.log({'Epoch bleu score': bleu})
         if current_steps > config['max_step']:
             break
         epoch += 1
 
-    test_bleu = validate(model=model_par,
-                         iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in test_iter),
-                         SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
-                         max_decode_iter=config['max_decode_iter'], logging=True, is_test=True)
-    print(f"Test Bleu score: {test_bleu}")
-    wandb.config.update({'Test bleu score': test_bleu})
+    # test_bleu = validate(model=model_par,
+    #                      iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in test_iter),
+    #                      SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
+    #                      max_decode_iter=config['max_decode_iter'], logging=True, is_test=True)
+    # print(f"Test Bleu score: {test_bleu}")
+    # wandb.config.update({'Test bleu score': test_bleu})
 
 
 main()
