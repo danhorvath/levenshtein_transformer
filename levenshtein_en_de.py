@@ -9,6 +9,7 @@ from levenhtein_transformer.model import LevenshteinTransformerModel
 from levenhtein_transformer.data import rebatch_and_noise, batch_size_fn, MyIterator
 from levenhtein_transformer.validator import validate
 from utils import save_model
+import spacy
 
 from levenhtein_transformer.config import config
 
@@ -30,24 +31,47 @@ def main():
     def tokenize_bpe(text):
         return text.split()
 
-    SRC = data.Field(tokenize=tokenize_bpe, pad_token=BLANK_WORD, unk_token=UNK)
-    TGT = data.Field(tokenize=tokenize_bpe, init_token=BOS_WORD, unk_token=UNK,
+    spacy_de = spacy.load('de')
+    spacy_en = spacy.load('en')
+
+    def tokenize_de(text):
+        return [tok.text for tok in spacy_de.tokenizer(text)]
+
+    def tokenize_en(text):
+        return [tok.text for tok in spacy_en.tokenizer(text)]
+
+    # SRC = data.Field(tokenize=tokenize_bpe, pad_token=BLANK_WORD, unk_token=UNK)
+    # TGT = data.Field(tokenize=tokenize_bpe, init_token=BOS_WORD, unk_token=UNK,
+    #                  eos_token=EOS_WORD, pad_token=BLANK_WORD)
+
+    SRC = data.Field(tokenize=tokenize_en, pad_token=BLANK_WORD, unk_token=UNK)
+    TGT = data.Field(tokenize=tokenize_de, init_token=BOS_WORD, unk_token=UNK,
                      eos_token=EOS_WORD, pad_token=BLANK_WORD)
 
-    train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
-                                             # train='train.tok.clean.bpe.32000',
-                                             train='newstest2014.tok.bpe.32000',
-                                             validation='newstest2013.tok.bpe.32000',
-                                             test='newstest2014.tok.bpe.32000',
-                                             fields=(SRC, TGT),
-                                             filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
-                                                                   len(vars(x)['trg']) <= config['max_len'],
-                                             root='./.data/')
+    # train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
+    #                                          # train='train.tok.clean.bpe.32000',
+    #                                          train='newstest2014.tok.bpe.32000',
+    #                                          validation='newstest2013.tok.bpe.32000',
+    #                                          test='newstest2014.tok.bpe.32000',
+    #                                          fields=(SRC, TGT),
+    #                                          filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
+    #                                                                len(vars(x)['trg']) <= config['max_len'],
+    #                                          root='./.data/')
+
+    train, val, test = datasets.Multi30k.splits(exts=('.en', '.de'),
+                                                train='train',
+                                                validation='val',
+                                                test='test2016',
+                                                fields=(SRC, TGT),
+                                                filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
+                                                                      len(vars(x)['trg']) <= config['max_len'],
+                                                root='./.data/')
     print('Train set length: ', len(train))
 
     # building shared vocabulary
     TGT.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
     SRC.vocab = TGT.vocab
+    print(SRC.vocab.itos)
 
     print('Source vocab length: ', len(SRC.vocab.itos))
     print('Target vocab length: ', len(TGT.vocab.itos))
@@ -138,7 +162,7 @@ def main():
         current_steps += steps
 
         save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
-                    updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
+                   updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
 
         # calculating validation bleu score
         model_par.eval()
