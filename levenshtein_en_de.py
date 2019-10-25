@@ -92,6 +92,7 @@ def main():
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
     model.generator.lookup_table.weight = model.tgt_embed[0].lookup_table.weight
+    model.decoder.out_layer.lookup_table.weight = model.tgt_embed[0].lookup_table.weight
     model.cuda()
 
     model_size = model.src_embed[0].d_model
@@ -135,6 +136,10 @@ def main():
                                 train=True)
 
         current_steps += steps
+
+        save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
+                    updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
+
         # calculating validation bleu score
         model_par.eval()
         bleu = validate(model=model_par,
@@ -142,12 +147,9 @@ def main():
                         SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
                         max_decode_iter=config['max_decode_iter'], logging=True)
         wandb.log({'Epoch bleu score': bleu})
-
-        save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
-                    updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
         if current_steps > config['max_step']:
             break
-        epoch +=1
+        epoch += 1
 
     test_bleu = validate(model=model_par,
                          iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in test_iter),

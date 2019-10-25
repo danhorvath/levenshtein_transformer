@@ -8,7 +8,7 @@ from torch import Tensor
 import torch.nn.functional as F
 import torch.nn as nn
 
-from transformer.layers import Decoder, EncoderDecoder
+from transformer.layers import Decoder, EncoderDecoder, Generator
 from levenhtein_transformer.utils import _apply_del_words, _apply_ins_masks, _apply_ins_words, \
     _get_del_targets, _get_ins_targets, fill_tensors as _fill, skip_tensors as _skip
 from levenhtein_transformer.data import BatchWithNoise
@@ -172,8 +172,7 @@ class LevenshteinDecoder(Decoder):
         self.embed_mask_ins = Embedding(256, output_embed_dim * 2, None)
 
         # embeds the number of tokens to be inserted, max 256
-        self.embed_word_pred = nn.Parameter(torch.Tensor(tgt_vocab, output_embed_dim))
-        self.sqrt_d_model = output_embed_dim ** -0.5
+        self.out_layer = Generator(output_embed_dim, tgt_vocab)
 
         # embeds either 0 or 1
         self.embed_word_del = Embedding(2, output_embed_dim, None)
@@ -192,15 +191,15 @@ class LevenshteinDecoder(Decoder):
         # ]
 
         features_cat = torch.cat([features[:, :-1, :], features[:, 1:, :]], 2)
-        return F.linear(features_cat, self.embed_mask_ins.weight) * self.sqrt_d_model
+        return F.linear(features_cat, self.embed_mask_ins.weight)
 
     def forward_word_ins(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return F.linear(features, self.embed_word_pred) * self.sqrt_d_model
+        return self.out_layer(features)
 
     def forward_word_del(self, encoder_out: Tensor, encoder_out_mask: Tensor, x: Tensor, x_mask: Tensor):
         features = self.extract_features(x, encoder_out, encoder_out_mask, x_mask)
-        return F.linear(features, self.embed_word_del.weight) * self.sqrt_d_model
+        return F.linear(features, self.embed_word_del.weight)
 
 
 def Embedding(num_embeddings, embedding_dim, padding_idx):
