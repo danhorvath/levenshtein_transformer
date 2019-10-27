@@ -4,6 +4,7 @@ BATCH_MULTIPLIER = 1.
 SINGLE_GPU_BATCH_SIZE = 7000
 BATCH_SIZE = SINGLE_GPU_BATCH_SIZE * device_count()
 MAX_DECODER_RATIO = 2
+MAX_DECODE_ITER = 3
 
 config = {'num_layers': 6,
           'attn_heads': 8,
@@ -13,8 +14,8 @@ config = {'num_layers': 6,
           'batch_size': BATCH_SIZE,
           'batch_multiplier': BATCH_MULTIPLIER,
           'effective_batch_size': BATCH_SIZE * BATCH_MULTIPLIER,
-          'val_batch_size': SINGLE_GPU_BATCH_SIZE * BATCH_MULTIPLIER // (MAX_DECODER_RATIO * 2),
-          'max_decode_iter': 10,
+          'val_batch_size': SINGLE_GPU_BATCH_SIZE * BATCH_MULTIPLIER // (MAX_DECODER_RATIO * MAX_DECODE_ITER),
+          'max_decode_iter': MAX_DECODE_ITER,
           'max_len': 150,
           'min_freq': 1,
           'warmup_init_lr': 1e-07,

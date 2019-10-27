@@ -20,7 +20,7 @@ EOS_WORD = '</s>'
 BLANK_WORD = '<blank>'
 UNK = '<unk>'
 
-wandb.init(project="levenshtein_transformer")
+wandb.init(project="levenshtein_transformer_multi30k")
 wandb.config.update(config)
 
 
@@ -96,22 +96,22 @@ def main():
     criterion = LabelSmoothingLoss(batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
-                                        BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
-                                        criterion=criterion,
-                                        d_model=256, d_ff=256, h=1,
-                                        dropout=config['dropout'],
-                                        input_dropout=config['input_dropout'])
-
-    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
-    #                                     n=config['num_layers'],
-    #                                     h=config['attn_heads'],
-    #                                     d_model=config['model_dim'],
-    #                                     dropout=config['dropout'],,
-    #                                     input_dropout=config['input_dropout']
-    #                                     d_ff=config['ff_dim'],
+    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
+    #                                     BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
     #                                     criterion=criterion,
-    #                                     PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
+    #                                     d_model=256, d_ff=256, h=1,
+    #                                     dropout=config['dropout'],
+    #                                     input_dropout=config['input_dropout'])
+
+    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
+                                        n=config['num_layers'],
+                                        h=config['attn_heads'],
+                                        d_model=config['model_dim'],
+                                        dropout=config['dropout'],
+                                        input_dropout=config['input_dropout'],
+                                        d_ff=config['ff_dim'],
+                                        criterion=criterion,
+                                        PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
 
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
@@ -161,8 +161,8 @@ def main():
 
         current_steps += steps
 
-        save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
-                   updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
+        # save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
+        #            updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
 
         # calculating validation bleu score
         model_par.eval()
