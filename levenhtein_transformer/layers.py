@@ -32,7 +32,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
         # encoding
         encoder_out = self.encode(src, src_mask)
         x = inject_noise(tgt, pad=self.pad, bos=self.bos, eos=self.eos)
-        x_mask = BatchWithNoise.make_std_mask(tgt, pad=self.pad)
+        x_mask = BatchWithNoise.make_std_mask(x, pad=self.pad)
 
         # generate training labels for insertion
         # word_pred_tgt, word_pred_tgt_masks, ins_targets
@@ -63,17 +63,8 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
                                        masks=word_del_mask, label_smoothing=0.01)
 
         return {
-            "ins_out": ins_out,
-            "ins_tgt": ins_targets,
-            "ins_mask": ins_masks,
             "ins_loss": ins_loss,
-            "word_pred_out": word_pred_out,
-            "word_pred_tgt": tgt,
-            "word_pred_mask": word_pred_tgt_masks,
             "word_pred_loss": word_pred_loss,
-            "word_del_out": word_del_out,
-            "word_del_tgt": word_del_targets,
-            "word_del_mask": word_del_mask,
             "word_del_loss": word_del_loss,
             "loss": ins_loss + word_pred_loss + word_del_loss
         }
@@ -86,7 +77,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
         if max_ins_ratio is None:
             max_ins_lens = x.new().fill_(255)
-            max_out_lens =  x.new().fill_(255)
+            max_out_lens = x.new().fill_(255)
         else:
             src_lens = encoder_padding_mask.squeeze(1).sum(1)
             max_ins_lens = (src_lens * max_ins_ratio).clamp(min=5).long()

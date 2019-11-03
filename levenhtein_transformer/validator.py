@@ -9,8 +9,7 @@ from utils import vector_to_sentence
 
 
 def validate(model: LevenshteinEncodeDecoder, iterator, SRC, TGT, EOS_WORD, eos, bos, pad, max_decode_iter=10,
-             logging=False,
-             is_test=False):
+             logging=False, is_test=False):
     model.eval()
     print('Validating...')
     # TODO: parallel Bleu calculation
