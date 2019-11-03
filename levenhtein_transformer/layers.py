@@ -10,7 +10,7 @@ import torch.nn as nn
 
 from transformer.layers import Decoder, EncoderDecoder, Generator
 from levenhtein_transformer.utils import _apply_del_words, _apply_ins_masks, _apply_ins_words, \
-    _get_del_targets, _get_ins_targets, fill_tensors as _fill, skip_tensors as _skip
+    _get_del_targets, _get_ins_targets, fill_tensors as _fill, skip_tensors as _skip, inject_noise
 from levenhtein_transformer.data import BatchWithNoise
 
 
@@ -23,7 +23,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
         self.unk = unk
         self.criterion = criterion
 
-    def forward(self, src: Tensor, x: Tensor, src_mask: Tensor, x_mask: Tensor, tgt: Tensor):
+    def forward(self, src: Tensor, src_mask: Tensor, tgt: Tensor):
 
         # TODO: CHECK OUTPUTS OF ALL TGT-PRED PAIRS!!!
 
@@ -31,6 +31,8 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
         # encoding
         encoder_out = self.encode(src, src_mask)
+        x = inject_noise(tgt, pad=self.pad, bos=self.bos, eos=self.eos)
+        x_mask = BatchWithNoise.make_std_mask(tgt, pad=self.pad)
 
         # generate training labels for insertion
         # word_pred_tgt, word_pred_tgt_masks, ins_targets

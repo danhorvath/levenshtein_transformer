@@ -44,6 +44,7 @@ def main():
                                                                    len(vars(x)['trg']) <= config['max_len'],
                                              root='./.data/')
     print('Train set length: ', len(train))
+    wandb.config.update({'Train set length': len(train)})
 
     # building shared vocabulary
     TGT.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
@@ -51,8 +52,7 @@ def main():
 
     print('Source vocab length: ', len(SRC.vocab.itos))
     print('Target vocab length: ', len(TGT.vocab.itos))
-    wandb.config.update({'src_vocab_length': len(SRC.vocab),
-                         'target_vocab_length': len(TGT.vocab)})
+    wandb.config.update({'Source vocab length': len(SRC.vocab), 'Target vocab length': len(TGT.vocab)})
 
     pad_idx = TGT.vocab.stoi[BLANK_WORD]
     bos_idx = TGT.vocab.stoi[BOS_WORD]
@@ -98,8 +98,9 @@ def main():
     model_size = model.src_embed[0].d_model
     print('Model created with size of', model_size)
 
-    wandb.config.update({'model_size': model_size})
+    wandb.config.update({'Model size': model_size})
 
+    # make the inner model functions available from the DataParallel wrapper
     class MyDataParallel(nn.DataParallel):
         def __getattr__(self, name):
             try:
@@ -125,6 +126,7 @@ def main():
     while True:
         # training model
         print('Epoch ', epoch)
+        wandb.log({'Epoch', epoch}, commit=False)
         model_par.train()
 
         loss, steps = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
@@ -137,8 +139,9 @@ def main():
 
         current_steps += steps
 
-        save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
-                    updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
+        if epoch >= 2:
+            save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
+                       updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
 
         # calculating validation bleu score
         model_par.eval()
@@ -146,7 +149,7 @@ def main():
                         iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
                         SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
                         max_decode_iter=config['max_decode_iter'], logging=True)
-        wandb.log({'Epoch bleu score': bleu})
+        wandb.log({'Epoch bleu score': bleu}, commit=False)
         if current_steps > config['max_step']:
             break
         epoch += 1

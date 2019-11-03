@@ -48,7 +48,7 @@ def bpe_to_words(sentence):
     return new_sentence
 
 
-def vector_to_sentence(vector: torch.Tensor, field, eos_word: str, start_from=1):
+def vector_to_sentence(vector: torch.Tensor, field, eos_word: str, start_from=1, change_encoding=False):
     sentence = []
     for l in range(start_from, vector.size(0)):
         word = field.vocab.itos[vector[l]]
@@ -56,8 +56,10 @@ def vector_to_sentence(vector: torch.Tensor, field, eos_word: str, start_from=1)
             break
         sentence.append(word)
 
-    # fixing encoding
-    sentence = ' '.join(bpe_to_words(sentence)).encode('utf-8').decode('latin-1')
+    sentence = ' '.join(bpe_to_words(sentence))
+    if change_encoding:
+        # fixing encoding
+        sentence = sentence.encode('utf-8').decode('latin-1')
     return sentence
 
 
