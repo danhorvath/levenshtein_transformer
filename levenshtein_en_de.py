@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchtext import data, datasets
+import spacy
 
 from transformer.optimizer import NoamOpt
 from levenhtein_transformer.train import run_epoch
@@ -19,7 +20,7 @@ EOS_WORD = '</s>'
 BLANK_WORD = '<blank>'
 UNK = '<unk>'
 
-wandb.init(project="levenshtein_transformer")
+wandb.init(project="levenshtein_transformer_multi30k")
 wandb.config.update(config)
 
 
@@ -27,22 +28,28 @@ def main():
     devices = list(range(torch.cuda.device_count()))
     print('Selected devices: ', devices)
 
-    def tokenize_bpe(text):
-        return text.split()
+    spacy_de = spacy.load('de')
+    spacy_en = spacy.load('en')
 
-    SRC = data.Field(tokenize=tokenize_bpe, pad_token=BLANK_WORD, unk_token=UNK)
-    TGT = data.Field(tokenize=tokenize_bpe, init_token=BOS_WORD, unk_token=UNK,
+    def tokenize_de(text):
+        return [tok.text for tok in spacy_de.tokenizer(text)]
+
+    def tokenize_en(text):
+        return [tok.text for tok in spacy_en.tokenizer(text)]
+
+    SRC = data.Field(tokenize=tokenize_en, pad_token=BLANK_WORD, unk_token=UNK)
+    TGT = data.Field(tokenize=tokenize_de, init_token=BOS_WORD, unk_token=UNK,
                      eos_token=EOS_WORD, pad_token=BLANK_WORD)
 
-    train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
-                                             train='train.tok.clean.bpe.32000',
-                                             # train='newstest2014.tok.bpe.32000',
-                                             validation='newstest2013.tok.bpe.32000',
-                                             test='newstest2014.tok.bpe.32000',
-                                             fields=(SRC, TGT),
-                                             filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
-                                                                   len(vars(x)['trg']) <= config['max_len'],
-                                             root='./.data/')
+    train, val, test = datasets.Multi30k.splits(exts=('.en', '.de'),
+                                                train='train',
+                                                validation='val',
+                                                test='test2016',
+                                                fields=(SRC, TGT),
+                                                filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
+                                                                      len(vars(x)['trg']) <= config['max_len'],
+                                                root='./.data/')
+
     print('Train set length: ', len(train))
     wandb.config.update({'Train set length': len(train)})
 
@@ -139,10 +146,6 @@ def main():
 
         current_steps += steps
 
-        if epoch >= 2:
-            save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
-                       updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
-
         # calculating validation bleu score
         model_par.eval()
         bleu = validate(model=model_par,
@@ -153,6 +156,9 @@ def main():
         if current_steps > config['max_step']:
             break
         epoch += 1
+
+    save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
+               updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_final___')
 
     test_bleu = validate(model=model_par,
                          iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in test_iter),
