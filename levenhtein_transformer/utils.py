@@ -265,7 +265,7 @@ def inject_noise(target_tokens: Tensor, pad, bos, eos):
             .gather(1, target_rank.masked_fill_(target_cutoff, max_len).sort(1)[1])
 
         # remove unnecessary paddings
-        prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
+        # prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
 
     return prev_target_tokens
 
@@ -276,3 +276,25 @@ def initialize_output_tokens(src_tokens: Tensor, bos: int, eos: int):
     initial_output_tokens[:, 1] = eos
 
     return initial_output_tokens
+
+
+def pad_tensors_in_dim(x_org: Tensor, y_org: Tensor, dim: int, pad: int) -> (Tensor, Tensor):
+    x = x_org.detach().clone()
+    y = y_org.detach().clone()
+    x_shape = [*x.size()]
+    y_shape = [*y.size()]
+
+    if y_shape[dim] == x_shape[dim]:
+        return x, y
+    elif y_shape[dim] > x_shape[dim]:
+        pad_shape = x_shape
+        pad_shape[dim] = y_shape[dim] - x_shape[dim]
+        padding_tensor = torch.zeros(x_shape, dtype=x.dtype, device=x.device).fill_(pad)
+        padded_x = torch.cat([x, padding_tensor], dim=dim)
+        return padded_x, y
+    elif y_shape[dim] < x_shape[dim]:
+        pad_shape = y_shape
+        pad_shape[dim] = x_shape[dim] - y_shape[dim]
+        padding_tensor = torch.zeros(y_shape, dtype=y.dtype, device=y.device).fill_(pad)
+        padded_y = torch.cat([y, padding_tensor], dim=dim)
+        return x, padded_y

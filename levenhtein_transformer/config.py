@@ -1,9 +1,9 @@
 from torch.cuda import device_count
 
 BATCH_MULTIPLIER = 1.
-SINGLE_GPU_BATCH_SIZE = 7000
+SINGLE_GPU_BATCH_SIZE = 8000
 BATCH_SIZE = SINGLE_GPU_BATCH_SIZE * device_count()
-MAX_DECODER_RATIO = 2
+MAX_DECODER_RATIO = 2.
 
 config = {'num_layers': 6,
           'attn_heads': 8,
@@ -22,11 +22,12 @@ config = {'num_layers': 6,
           'min_lr': 1e-09,
           'warmup': 10000,
           'dropout': 0.0,
-          'input_dropout': 0.1,
+          'input_dropout': 0.3,
           'weight_decay': 0.01,
           'epsilon': 1e-9,
           'max_step': 3e5,
           'beta_1': 0.9,
           'beta_2': 0.98,
-          'max_decoder_ratio': MAX_DECODER_RATIO
+          'decoder_insertion_ratio': MAX_DECODER_RATIO / 3,
+          'decoder_length_ratio': MAX_DECODER_RATIO
           }
