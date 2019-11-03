@@ -28,7 +28,7 @@ def validate(model, iterator, SRC, TGT, EOS_WORD, eos, bos, max_decode_iter=10, 
         tgt_sentences = [vector_to_sentence(tgt[i, :], TGT, EOS_WORD) for i in range(tgt.size(0))]
 
         decode_iter = 0
-        prev_out = initialize_output_tokens(batch.noised_trg, bos=bos, eos=eos)
+        prev_out = initialize_output_tokens(batch.trg, bos=bos, eos=eos)
         encoder_out = model.encode(batch.src, batch.src_mask)
         out = torch.tensor([[]])
         while decode_iter < max_decode_iter:

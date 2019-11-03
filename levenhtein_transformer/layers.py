@@ -29,8 +29,9 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
 
         assert tgt is not None, "Forward function only supports training."
 
-        src = inject_noise(tgt, pad=self.pad, bos=self.bos, eos=self.eos)
-        src_mask = BatchWithNoise.make_std_mask(src, self.pad)
+        if x is None:
+            x = inject_noise(tgt, pad=self.pad, bos=self.bos, eos=self.eos)
+            x_mask = BatchWithNoise.make_std_mask(x, self.pad)
 
         # encoding
         encoder_out = self.encode(src, src_mask)

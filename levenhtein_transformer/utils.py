@@ -265,7 +265,7 @@ def inject_noise(target_tokens: Tensor, pad, bos, eos):
             .gather(1, target_rank.masked_fill_(target_cutoff, max_len).sort(1)[1])
 
         # remove unnecessary paddings
-        prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
+        # prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
 
     return prev_target_tokens
 

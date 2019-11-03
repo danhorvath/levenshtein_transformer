@@ -71,7 +71,6 @@ def main():
     # building shared vocabulary
     TGT.build_vocab(train.src, train.trg, min_freq=config['min_freq'])
     SRC.vocab = TGT.vocab
-    print(SRC.vocab.itos)
 
     print('Source vocab length: ', len(SRC.vocab.itos))
     print('Target vocab length: ', len(TGT.vocab.itos))
@@ -96,22 +95,22 @@ def main():
     criterion = LabelSmoothingLoss(batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
-                                        BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
-                                        criterion=criterion,
-                                        d_model=256, d_ff=256, h=1,
-                                        dropout=config['dropout'],
-                                        input_dropout=config['input_dropout'])
-
-    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
-    #                                     n=config['num_layers'],
-    #                                     h=config['attn_heads'],
-    #                                     d_model=config['model_dim'],
-    #                                     dropout=config['dropout'],
-    #                                     input_dropout=config['input_dropout'],
-    #                                     d_ff=config['ff_dim'],
+    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
+    #                                     BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
     #                                     criterion=criterion,
-    #                                     PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
+    #                                     d_model=256, d_ff=256, h=1,
+    #                                     dropout=config['dropout'],
+    #                                     input_dropout=config['input_dropout'])
+
+    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
+                                        n=config['num_layers'],
+                                        h=config['attn_heads'],
+                                        d_model=config['model_dim'],
+                                        dropout=config['dropout'],
+                                        input_dropout=config['input_dropout'],
+                                        d_ff=config['ff_dim'],
+                                        criterion=criterion,
+                                        PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
 
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
@@ -149,6 +148,7 @@ def main():
     while True:
         # training model
         print('Epoch ', epoch)
+        wandb.log({'Epoch ': epoch})
         model_par.train()
 
         loss, steps = run_epoch((rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in train_iter),
@@ -164,13 +164,15 @@ def main():
         # save_model(model=model, optimizer=model_opt.optimizer, loss=loss, src_field=SRC, tgt_field=TGT,
         #            updates=current_steps, epoch=epoch, prefix=f'lev_t_epoch_{epoch}___')
 
+        if epoch %5 == 0 and epoch>20:
         # calculating validation bleu score
-        model_par.eval()
-        bleu = validate(model=model_par,
-                        iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
-                        SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
-                        max_decode_iter=config['max_decode_iter'], logging=True)
-        wandb.log({'Epoch bleu score': bleu})
+            model_par.eval()
+            bleu = validate(model=model_par,
+                            iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
+                            SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx,
+                            max_decode_iter=config['max_decode_iter'], logging=True)
+            wandb.log({'Epoch bleu score': bleu})
+
         if current_steps > config['max_step']:
             break
         epoch += 1

@@ -48,8 +48,7 @@ def run_epoch(data_iter, model: LevenshteinEncodeDecoder, opt, steps_so_far, bat
                        'Deletion loss': word_del_loss,
                        'Tokens per sec': tokens / elapsed,
                        'Learning rate': opt._rate,
-                       'Batch length': current_batch_size,
-                       'Effective batch length': current_batch_size * config['batch_multiplier']})
+                       'Batch length': current_batch_size})
             if effective_step % 100 == 1:
                 print(f"Step: {steps_so_far + effective_step} | Loss: {loss} | " +
                       f"Insertion loss: {ins_loss} | " +
