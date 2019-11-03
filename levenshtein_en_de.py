@@ -96,22 +96,22 @@ def main():
     criterion = LabelSmoothingLoss(batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
-    #                                     BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
-    #                                     criterion=criterion,
-    #                                     d_model=256, d_ff=256, h=1,
-    #                                     dropout=config['dropout'],
-    #                                     input_dropout=config['input_dropout'])
-
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
-                                        n=config['num_layers'],
-                                        h=config['attn_heads'],
-                                        d_model=config['model_dim'],
-                                        dropout=config['dropout'],
-                                        input_dropout=config['input_dropout'],
-                                        d_ff=config['ff_dim'],
+    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
+                                        BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
                                         criterion=criterion,
-                                        PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
+                                        d_model=256, d_ff=256, h=1,
+                                        dropout=config['dropout'],
+                                        input_dropout=config['input_dropout'])
+
+    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
+    #                                     n=config['num_layers'],
+    #                                     h=config['attn_heads'],
+    #                                     d_model=config['model_dim'],
+    #                                     dropout=config['dropout'],
+    #                                     input_dropout=config['input_dropout'],
+    #                                     d_ff=config['ff_dim'],
+    #                                     criterion=criterion,
+    #                                     PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
 
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight

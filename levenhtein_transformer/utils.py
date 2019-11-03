@@ -242,29 +242,30 @@ def fill_tensors(x: Tensor, mask: Tensor, y: Tensor, padding_idx: int) -> Tensor
 
 
 def inject_noise(target_tokens: Tensor, pad, bos, eos):
-    max_len = target_tokens.size(1)
-    target_mask = target_tokens.eq(pad)
-    target_score = target_tokens.clone().float().uniform_()
-    target_score.masked_fill_(target_tokens.eq(bos) | target_tokens.eq(eos), 0.0)
-    target_score.masked_fill_(target_mask, 1)
+    with torch.cuda.device_of(target_tokens):
+        max_len = target_tokens.size(1)
+        target_mask = target_tokens.eq(pad)
+        target_score = target_tokens.clone().float().uniform_()
+        target_score.masked_fill_(target_tokens.eq(bos) | target_tokens.eq(eos), 0.0)
+        target_score.masked_fill_(target_mask, 1)
 
-    # reorder the numbers randomly, with bos and eos at the beginning and paddings at the end
-    # ['<bos>', 'asd', 'kek', 'lol', '<bos>', '<pad>', '<pad>', '<pad>'] =>
-    # ['<bos>', '<bos>',  'kek', 'lol', 'asd','<pad>', '<pad>', '<pad>']
-    target_score, target_rank = target_score.sort(1)
-    target_length = target_mask.size(1) - target_mask.float().sum(1, keepdim=True)
+        # reorder the numbers randomly, with bos and eos at the beginning and paddings at the end
+        # ['<bos>', 'asd', 'kek', 'lol', '<eos>', '<pad>', '<pad>', '<pad>'] =>
+        # ['<bos>', '<eos>',  'kek', 'lol', 'asd','<pad>', '<pad>', '<pad>']
+        target_score, target_rank = target_score.sort(1)
+        target_length = target_mask.size(1) - target_mask.float().sum(1, keepdim=True)
 
-    # do not delete <bos> and <eos> (we assign 0 score for them)
-    # assign a new random length for each line, where: 2 < new_length < original_length
-    target_cutoff = 2 + ((target_length - 2) * target_score.new_zeros(target_score.size(0), 1).uniform_()).long()
-    target_cutoff = target_score.sort(1)[1] >= target_cutoff
+        # do not delete <bos> and <eos> (we assign 0 score for them)
+        # assign a new random length for each line, where: 2 < new_length < original_length
+        target_cutoff = 2 + ((target_length - 2) * target_score.new_zeros(target_score.size(0), 1).uniform_()).long()
+        target_cutoff = target_score.sort(1)[1] >= target_cutoff
 
-    # remove tokens after the cutoff
-    prev_target_tokens = target_tokens.gather(1, target_rank).masked_fill_(target_cutoff, pad) \
-        .gather(1, target_rank.masked_fill_(target_cutoff, max_len).sort(1)[1])
+        # remove tokens after the cutoff
+        prev_target_tokens = target_tokens.gather(1, target_rank).masked_fill_(target_cutoff, pad) \
+            .gather(1, target_rank.masked_fill_(target_cutoff, max_len).sort(1)[1])
 
-    # remove unnecessary paddings
-    prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
+        # remove unnecessary paddings
+        prev_target_tokens = prev_target_tokens[:, :prev_target_tokens.ne(pad).sum(1).max()]
 
     return prev_target_tokens
 

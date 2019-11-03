@@ -22,7 +22,7 @@ def run_epoch(data_iter, model: LevenshteinEncodeDecoder, opt, steps_so_far, bat
         optimizer_should_step = effective_step.is_integer()
         current_batch_size = max(batch.src.size(0) * batch.src.size(1), batch.trg.size(0) * batch.trg.size(1))
 
-        out = model(batch.src, batch.noised_trg, batch.src_mask, batch.noised_trg_mask, batch.trg)
+        out = model(batch.src, None, batch.src_mask, None, batch.trg)
 
         ins_loss = out['ins_loss'].sum().item()
         word_pred_loss = out['word_pred_loss'].sum().item()

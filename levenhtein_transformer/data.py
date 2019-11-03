@@ -43,8 +43,6 @@ class BatchWithNoise(object):
         if trg is not None:
             self.trg = trg
             self.trg_mask = self.make_std_mask(self.trg, pad)
-            self.noised_trg = inject_noise(trg, pad=pad, bos=bos, eos=eos)
-            self.noised_trg_mask = self.make_std_mask(self.noised_trg, pad)
             self.ntokens = (trg[:, 1:] != pad).data.sum().item()
 
     @staticmethod
