@@ -47,7 +47,7 @@ def main():
                                                 test='test2016',
                                                 fields=(SRC, TGT),
                                                 filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
-                                                                      len(vars(x)['trg']) <= config['max_len'],
+                                                len(vars(x)['trg']) <= config['max_len'],
                                                 root='./.data/')
 
     print('Train set length: ', len(train))
@@ -146,13 +146,16 @@ def main():
 
         current_steps += steps
 
-        # calculating validation bleu score
-        model_par.eval()
-        bleu = validate(model=model_par,
-                        iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
-                        SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx, pad=pad_idx,
-                        max_decode_iter=min(epoch + 1, config['max_decode_iter']), logging=False)
-        wandb.log({'Epoch bleu score': bleu}, commit=False)
+        if epoch % 5 == 0 and epoch > 20:
+            # calculating validation bleu score
+            model_par.eval()
+            decode_iter = min(epoch + 1, config['max_decode_iter'])
+            bleu = validate(model=model_par,
+                            iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
+                            SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx, pad=pad_idx,
+                            max_decode_iter=decode_iter, logging=False)
+            wandb.log({'Epoch bleu score': bleu, 'Validation decoder iteration': decode_iter}, commit=False)
+
         if current_steps > config['max_step']:
             break
         epoch += 1

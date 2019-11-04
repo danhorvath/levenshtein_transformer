@@ -81,7 +81,7 @@ class LevenshteinEncodeDecoder(EncoderDecoder):
         else:
             src_lens = encoder_padding_mask.squeeze(1).sum(1)
             max_ins_lens = (src_lens * max_ins_ratio).clamp(min=5).long()
-            max_out_lens = (src_lens * max_ins_ratio).clamp(min=10).long()
+            max_out_lens = (src_lens * max_out_ratio).clamp(min=10).long()
 
         # delete words
         # do not delete tokens if it is <s> </s>
