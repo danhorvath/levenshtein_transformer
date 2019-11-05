@@ -9,7 +9,7 @@ from levenhtein_transformer.criterion import LabelSmoothingLoss
 from levenhtein_transformer.model import LevenshteinTransformerModel
 from levenhtein_transformer.data import rebatch_and_noise, batch_size_fn, MyIterator
 from levenhtein_transformer.validator import validate
-from utils import save_model
+from utils import save_model, CustomDataParallel
 
 from levenhtein_transformer.config import config
 
@@ -79,22 +79,22 @@ def main():
     criterion = LabelSmoothingLoss(batch_multiplier=config['batch_multiplier'])
     criterion.cuda()
 
-    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
-    #                                     BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
-    #                                     criterion=criterion,
-    #                                     d_model=256, d_ff=256, h=1,
-    #                                     dropout=config['dropout'],
-    #                                     input_dropout=config['input_dropout'])
-
-    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
-                                        n=config['num_layers'],
-                                        h=config['attn_heads'],
-                                        d_model=config['model_dim'],
-                                        dropout=config['dropout'],
-                                        input_dropout=config['input_dropout'],
-                                        d_ff=config['ff_dim'],
+    model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab), n=1, PAD=pad_idx,
+                                        BOS=bos_idx, EOS=eos_idx, UNK=unk_idx,
                                         criterion=criterion,
-                                        PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
+                                        d_model=256, d_ff=256, h=1,
+                                        dropout=config['dropout'],
+                                        input_dropout=config['input_dropout'])
+
+    # model = LevenshteinTransformerModel(len(SRC.vocab), len(TGT.vocab),
+    #                                     n=config['num_layers'],
+    #                                     h=config['attn_heads'],
+    #                                     d_model=config['model_dim'],
+    #                                     dropout=config['dropout'],
+    #                                     input_dropout=config['input_dropout'],
+    #                                     d_ff=config['ff_dim'],
+    #                                     criterion=criterion,
+    #                                     PAD=pad_idx, BOS=bos_idx, EOS=eos_idx, UNK=unk_idx)
 
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
@@ -107,15 +107,9 @@ def main():
 
     wandb.config.update({'Model size': model_size})
 
-    # make the inner model functions available from the DataParallel wrapper
-    class MyDataParallel(nn.DataParallel):
-        def __getattr__(self, name):
-            try:
-                return super(MyDataParallel, self).__getattr__(name)
-            except AttributeError:
-                return getattr(self.module, name)
 
-    model_par = MyDataParallel(model, device_ids=devices)
+
+    model_par = CustomDataParallel(model, device_ids=devices)
 
     model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
                         warmup_updates=config['warmup'],
@@ -146,15 +140,15 @@ def main():
 
         current_steps += steps
 
-        if epoch % 5 == 0 and epoch > 20:
-            # calculating validation bleu score
-            model_par.eval()
-            decode_iter = min(epoch + 1, config['max_decode_iter'])
-            bleu = validate(model=model_par,
-                            iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
-                            SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx, pad=pad_idx,
-                            max_decode_iter=decode_iter, logging=False)
-            wandb.log({'Epoch bleu score': bleu, 'Validation decoder iteration': decode_iter}, commit=False)
+        # if epoch % 5 == 0 and epoch > 20:
+        # calculating validation bleu score
+        model_par.eval()
+        decode_iter = min(epoch + 1, config['max_decode_iter'])
+        bleu = validate(model=model_par,
+                        iterator=(rebatch_and_noise(b, pad=pad_idx, bos=bos_idx, eos=eos_idx) for b in valid_iter),
+                        SRC=SRC, TGT=TGT, EOS_WORD=EOS_WORD, bos=bos_idx, eos=eos_idx, pad=pad_idx,
+                        max_decode_iter=decode_iter, logging=False)
+        wandb.log({'Epoch bleu score': bleu, 'Validation decoder iteration': decode_iter}, commit=False)
 
         if current_steps > config['max_step']:
             break

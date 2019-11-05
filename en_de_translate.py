@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchtext import data, datasets
+import spacy
 
 from transformer.train import run_epoch
 from transformer.optimizer import NoamOpt
@@ -9,7 +10,7 @@ from transformer.multi_gpu_loss_compute import MultiGPULossCompute
 from transformer.model import Transformer
 from transformer.data import batch_size_fn, MyIterator, rebatch
 from transformer.validator import validate
-from utils import save_model
+from utils import save_model, CustomDataParallel
 
 from transformer.config import config
 
@@ -18,8 +19,9 @@ import wandb
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
 BLANK_WORD = '<blank>'
+UNK = '<unk>'
 
-wandb.init(project="transformer")
+wandb.init(project="transformer_multi30k")
 wandb.config.update(config)
 
 
@@ -27,23 +29,27 @@ def main():
     devices = list(range(torch.cuda.device_count()))
     print('Selected devices: ', devices)
 
-    def tokenize_bpe(text):
-        return text.split()
+    spacy_de = spacy.load('de')
+    spacy_en = spacy.load('en')
 
-    SRC = data.Field(tokenize=tokenize_bpe, pad_token=BLANK_WORD)
-    TGT = data.Field(tokenize=tokenize_bpe, init_token=BOS_WORD,
+    def tokenize_de(text):
+        return [tok.text for tok in spacy_de.tokenizer(text)]
+
+    def tokenize_en(text):
+        return [tok.text for tok in spacy_en.tokenizer(text)]
+
+    SRC = data.Field(tokenize=tokenize_en, pad_token=BLANK_WORD, unk_token=UNK)
+    TGT = data.Field(tokenize=tokenize_de, init_token=BOS_WORD, unk_token=UNK,
                      eos_token=EOS_WORD, pad_token=BLANK_WORD)
 
-    train, val, test = datasets.WMT14.splits(exts=('.en', '.de'),
-                                             train='train.tok.clean.bpe.32000',
-                                             # train='newstest2014.tok.bpe.32000',
-                                             validation='newstest2013.tok.bpe.32000',
-                                             test='newstest2014.tok.bpe.32000',
-                                             fields=(SRC, TGT),
-                                             filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
-                                                                   len(vars(x)['trg']
-                                                                       ) <= config['max_len'],
-                                             root='./.data/')
+    train, val, test = datasets.Multi30k.splits(exts=('.en', '.de'),
+                                                train='train',
+                                                validation='val',
+                                                test='test2016',
+                                                fields=(SRC, TGT),
+                                                filter_pred=lambda x: len(vars(x)['src']) <= config['max_len'] and
+                                                                      len(vars(x)['trg']) <= config['max_len'],
+                                                root='./.data/')
     print('Train set length: ', len(train))
 
     # building shared vocabulary
@@ -67,7 +73,8 @@ def main():
     test_iter = MyIterator(test, batch_size=config['batch_size'], device=torch.device(0), repeat=False,
                            sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
-    model = Transformer(len(SRC.vocab), len(TGT.vocab), N=config['num_layers'])
+    # model = Transformer(len(SRC.vocab), len(TGT.vocab), N=config['num_layers'])
+    model = Transformer(len(SRC.vocab), len(TGT.vocab), N=1, d_model=256, d_ff=256, h=1)
 
     # weight tying
     model.src_embed[0].lookup_table.weight = model.tgt_embed[0].lookup_table.weight
@@ -87,7 +94,7 @@ def main():
         size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1, batch_multiplier=1)
     eval_criterion.cuda()
 
-    model_par = nn.DataParallel(model, device_ids=devices)
+    model_par = CustomDataParallel(model, device_ids=devices)
 
     model_opt = NoamOpt(warmup_init_lr=config['warmup_init_lr'], warmup_end_lr=config['warmup_end_lr'],
                         warmup_updates=config['warmup'],
@@ -101,6 +108,7 @@ def main():
 
     current_steps = 0
     for epoch in range(1, config['max_epochs'] + 1):
+        wandb.log({'Epoch': epoch}, commit=False)
         # training model
         model_par.train()
         loss_calculator = MultiGPULossCompute(model.generator, criterion, devices=devices, opt=model_opt)
@@ -116,35 +124,31 @@ def main():
 
         # calculating validation loss and bleu score
         model_par.eval()
-        loss_calculator_without_optimizer = MultiGPULossCompute(model.generator, eval_criterion, devices=devices,
-                                                                opt=None)
+        # loss_calculator_without_optimizer = MultiGPULossCompute(model.generator, eval_criterion, devices=devices,
+        #                                                         opt=None)
+        #
+        # (loss, _) = run_epoch((rebatch(pad_idx, b) for b in valid_iter),
+        #                       model_par,
+        #                       loss_calculator_without_optimizer,
+        #                       steps_so_far=current_steps)
 
-        (loss, _) = run_epoch((rebatch(pad_idx, b) for b in valid_iter),
-                              model_par,
-                              loss_calculator_without_optimizer,
-                              steps_so_far=current_steps)
-
-        if (epoch > 10) or current_steps > config['max_step']:
+        if epoch > 10 or True:
+            model_par.eval()
             # greedy decoding takes a while so Bleu won't be evaluated for every epoch
-            print('Calculating BLEU score...')
-            bleu = validate(model, valid_iter, SRC, TGT,
-                            BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'])
-            wandb.log({'Epoch bleu': bleu})
-            print(f'Epoch {epoch} | Bleu score: {bleu} ')
+            bleu = validate(model=model_par, valid_iter=valid_iter, SRC=SRC, TGT=TGT, BOS_WORD=BOS_WORD,
+                            EOS_WORD=EOS_WORD, BLANK_WORD=BLANK_WORD)
+            wandb.log({'Epoch bleu': bleu}, commit=False)
 
-        print(f"Epoch {epoch} | Loss: {loss}")
-        wandb.log({'Epoch': epoch, 'Epoch loss': loss})
-        if epoch > 10:
-            save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
-                       epoch=epoch)
+        # print(f"Epoch {epoch} | Loss: {loss}")
+        # wandb.log({'Epoch': epoch, 'Epoch loss': loss})
         if current_steps > config['max_step']:
             break
 
-    save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
-               epoch=epoch)
+    # save_model(model=model, optimizer=model_opt, loss=loss, src_field=SRC, tgt_field=TGT, updates=current_steps,
+    #            epoch=epoch)
 
-    test_bleu = validate(model, test_iter, SRC, TGT,
-                         BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'], logging=True)
+    test_bleu = validate(model_par, test_iter, SRC, TGT, BOS_WORD, EOS_WORD, BLANK_WORD, config['max_len'],
+                         is_test=True)
     print(f"Test Bleu score: {test_bleu}")
     wandb.config.update({'Test bleu score': test_bleu})
 

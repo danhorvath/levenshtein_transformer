@@ -1,3 +1,5 @@
+# This file is based on the fairseq implementation of the Levenshtein distance calculation.
+# Their code was written in c, which I translated to python here.
 import torch
 
 

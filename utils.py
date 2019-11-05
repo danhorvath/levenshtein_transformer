@@ -3,6 +3,7 @@ import torch
 import copy
 import collections
 import dill
+from torch import nn
 
 
 def load_models(example_model, paths):
@@ -118,3 +119,12 @@ def average_checkpoints(inputs):
         averaged_params[k] = v
         averaged_params[k].div_(num_models)
     return averaged_params
+
+
+# make the inner model functions available from the DataParallel wrapper
+class CustomDataParallel(nn.DataParallel):
+    def __getattr__(self, name):
+        try:
+            return super(CustomDataParallel, self).__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)

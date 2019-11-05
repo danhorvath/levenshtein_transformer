@@ -1,9 +1,9 @@
+# These functions are borrowed from the original Levenshtein transformer implementation in the fairseq library,
+# except for pad_tensors_in_dim and pad_tensor_to_length.
+# The functions are slightly modified, e.g pushing all computation to the gpus
 import torch
 from torch import Tensor
 import levenhtein_transformer.libnat as libnat
-
-
-# based on fairseq.libnat
 
 
 def _get_ins_targets(pred: Tensor, target: Tensor, padding_idx: int, unk_idx: int) -> \
